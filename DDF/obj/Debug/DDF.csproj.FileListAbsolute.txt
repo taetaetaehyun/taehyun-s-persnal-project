@@ -1,0 +1,46 @@
+C:\Users\SAMSUNG\source\repos\DDF\DDF\bin\Debug\DDF.exe.config
+C:\Users\SAMSUNG\source\repos\DDF\DDF\bin\Debug\DDF.exe
+C:\Users\SAMSUNG\source\repos\DDF\DDF\bin\Debug\DDF.pdb
+C:\Users\SAMSUNG\source\repos\DDF\DDF\obj\Debug\DDF.DDF_Form.resources
+C:\Users\SAMSUNG\source\repos\DDF\DDF\obj\Debug\DDF.Properties.Resources.resources
+C:\Users\SAMSUNG\source\repos\DDF\DDF\obj\Debug\DDF.csproj.GenerateResource.cache
+C:\Users\SAMSUNG\source\repos\DDF\DDF\obj\Debug\DDF.csproj.CoreCompileInputs.cache
+C:\Users\SAMSUNG\source\repos\DDF\DDF\obj\Debug\DDF.exe
+C:\Users\SAMSUNG\source\repos\DDF\DDF\obj\Debug\DDF.pdb
+C:\Users\SAMSUNG\source\repos\DDF\DDF\obj\Debug\DDF.csproj.AssemblyReference.cache
+C:\Users\SAMSUNG\source\repos\DDF\DDF\bin\Debug\NationalInstruments.Common.dll
+C:\Users\SAMSUNG\source\repos\DDF\DDF\bin\Debug\NationalInstruments.DAQmx.dll
+C:\Users\SAMSUNG\source\repos\DDF\DDF\bin\Debug\NationalInstruments.Common.xml
+C:\Users\SAMSUNG\source\repos\DDF\DDF\bin\Debug\NationalInstruments.DAQmx.xml
+C:\Users\SAMSUNG\source\repos\DDF\DDF\obj\Debug\DDF.csproj.CopyComplete
+C:\Users\SAMSUNG\Desktop\제어 연습\DDF\bin\Debug\DDF.exe.config
+C:\Users\SAMSUNG\Desktop\제어 연습\DDF\bin\Debug\DDF.exe
+C:\Users\SAMSUNG\Desktop\제어 연습\DDF\bin\Debug\DDF.pdb
+C:\Users\SAMSUNG\Desktop\제어 연습\DDF\bin\Debug\NationalInstruments.Common.dll
+C:\Users\SAMSUNG\Desktop\제어 연습\DDF\bin\Debug\NationalInstruments.DAQmx.dll
+C:\Users\SAMSUNG\Desktop\제어 연습\DDF\bin\Debug\NationalInstruments.Common.xml
+C:\Users\SAMSUNG\Desktop\제어 연습\DDF\bin\Debug\NationalInstruments.DAQmx.xml
+C:\Users\SAMSUNG\Desktop\제어 연습\DDF\obj\Debug\DDF.csproj.AssemblyReference.cache
+C:\Users\SAMSUNG\Desktop\제어 연습\DDF\obj\Debug\DDF.DDF_Form.resources
+C:\Users\SAMSUNG\Desktop\제어 연습\DDF\obj\Debug\DDF.Properties.Resources.resources
+C:\Users\SAMSUNG\Desktop\제어 연습\DDF\obj\Debug\DDF.csproj.GenerateResource.cache
+C:\Users\SAMSUNG\Desktop\제어 연습\DDF\obj\Debug\DDF.csproj.CoreCompileInputs.cache
+C:\Users\SAMSUNG\Desktop\제어 연습\DDF\obj\Debug\DDF.csproj.CopyComplete
+C:\Users\SAMSUNG\Desktop\제어 연습\DDF\obj\Debug\DDF.exe
+C:\Users\SAMSUNG\Desktop\제어 연습\DDF\obj\Debug\DDF.pdb
+H:\제어 연습\DDF\bin\Debug\DDF.exe.config
+H:\제어 연습\DDF\bin\Debug\DDF.exe
+H:\제어 연습\DDF\bin\Debug\DDF.pdb
+H:\제어 연습\DDF\bin\Debug\NationalInstruments.Common.dll
+H:\제어 연습\DDF\bin\Debug\NationalInstruments.DAQmx.dll
+H:\제어 연습\DDF\bin\Debug\NationalInstruments.Common.xml
+H:\제어 연습\DDF\bin\Debug\NationalInstruments.DAQmx.xml
+H:\제어 연습\DDF\obj\Debug\DDF.csproj.AssemblyReference.cache
+H:\제어 연습\DDF\obj\Debug\DDF.csproj.SuggestedBindingRedirects.cache
+H:\제어 연습\DDF\obj\Debug\DDF.DDF_Form.resources
+H:\제어 연습\DDF\obj\Debug\DDF.Properties.Resources.resources
+H:\제어 연습\DDF\obj\Debug\DDF.csproj.GenerateResource.cache
+H:\제어 연습\DDF\obj\Debug\DDF.csproj.CoreCompileInputs.cache
+H:\제어 연습\DDF\obj\Debug\DDF.csproj.CopyComplete
+H:\제어 연습\DDF\obj\Debug\DDF.exe
+H:\제어 연습\DDF\obj\Debug\DDF.pdb

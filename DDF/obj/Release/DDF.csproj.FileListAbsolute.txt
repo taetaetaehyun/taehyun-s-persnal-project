@@ -1,0 +1,10 @@
+C:\Users\SAMSUNG\source\repos\DDF\DDF\bin\Release\DDF.exe.config
+C:\Users\SAMSUNG\source\repos\DDF\DDF\bin\Release\DDF.exe
+C:\Users\SAMSUNG\source\repos\DDF\DDF\bin\Release\DDF.pdb
+C:\Users\SAMSUNG\source\repos\DDF\DDF\obj\Release\DDF.csproj.AssemblyReference.cache
+C:\Users\SAMSUNG\source\repos\DDF\DDF\obj\Release\DDF.DDF_Form.resources
+C:\Users\SAMSUNG\source\repos\DDF\DDF\obj\Release\DDF.Properties.Resources.resources
+C:\Users\SAMSUNG\source\repos\DDF\DDF\obj\Release\DDF.csproj.GenerateResource.cache
+C:\Users\SAMSUNG\source\repos\DDF\DDF\obj\Release\DDF.csproj.CoreCompileInputs.cache
+C:\Users\SAMSUNG\source\repos\DDF\DDF\obj\Release\DDF.exe
+C:\Users\SAMSUNG\source\repos\DDF\DDF\obj\Release\DDF.pdb

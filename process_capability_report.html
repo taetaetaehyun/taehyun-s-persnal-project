@@ -185,6 +185,49 @@
     cursor: pointer;
   }
   .save-toolbar button:hover { background: #f0f3f9; border-color: #1d4ed8; color: #1d4ed8; }
+  .save-toolbar button.primary { background: #1d4ed8; border-color: #1d4ed8; color: #ffffff; }
+  .save-toolbar button.primary:hover { background: #1a41b8; color: #ffffff; }
+  .save-toolbar button:disabled { opacity: 0.5; cursor: default; }
+
+  .share-section {
+    margin-top: 24px;
+    border-top: 1px solid #e9eaee;
+    padding-top: 18px;
+  }
+  .share-section h2 { font-size: 16px; margin: 0 0 10px 0; }
+  .share-path {
+    font-family: Consolas, monospace;
+    font-size: 12px;
+    background: #f3f4f6;
+    border: 1px solid #e5e7eb;
+    border-radius: 6px;
+    padding: 6px 10px;
+    word-break: break-all;
+    margin-bottom: 10px;
+  }
+  .share-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 8px; }
+  .share-bar input {
+    border: 1px solid #d7dae0; border-radius: 6px; padding: 7px 10px; font-size: 13px; font-family: inherit;
+  }
+  .share-bar button {
+    background: #ffffff; border: 1px solid #c9cdd6; border-radius: 6px; padding: 7px 12px;
+    font-size: 13px; font-weight: 600; color: #1f2430; cursor: pointer;
+  }
+  .share-bar button:hover { background: #f0f3f9; border-color: #1d4ed8; color: #1d4ed8; }
+  #shareStatus { font-size: 12px; margin-bottom: 10px; }
+  .record-wrap { max-height: 360px; overflow: auto; border: 1px solid #e4e6eb; border-radius: 6px; }
+  .record-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .record-table th {
+    position: sticky; top: 0; background: #f3f4f6; text-align: left; padding: 7px 8px;
+    border-bottom: 1px solid #e4e6eb; white-space: nowrap;
+  }
+  .record-table td { padding: 6px 8px; border-bottom: 1px solid #f0f1f4; }
+  .record-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .record-table td.empty { text-align: center; color: #6b7280; padding: 16px; }
+  .record-table button {
+    background: #eef2ff; border: 1px solid #c7d2fe; color: #3730a3; border-radius: 5px;
+    padding: 3px 8px; font-size: 12px; cursor: pointer; white-space: nowrap;
+  }
 
   .dashboard-grid {
     display: none;
@@ -356,6 +399,7 @@
   <button class="analyze-btn" onclick="analyzeData()">분석 실행 (Analyze)</button>
 
   <div class="save-toolbar" id="saveToolbar">
+    <button class="primary" id="saveCsvBtn" onclick="saveToCsv()" disabled>공유 CSV에 결과 저장</button>
     <button onclick="saveChartOnly()">그래프만 저장 (PNG)</button>
     <button onclick="saveFullReport()">전체 리포트 저장 (PNG)</button>
   </div>
@@ -407,6 +451,28 @@
         <div class="data-row"><span>PPM &gt; USL</span><span id="ppmObsU">-</span><span id="ppmOvU">-</span><span id="ppmWiU">-</span></div>
         <div class="data-row"><span>PPM Total</span><span id="ppmObsT">-</span><span id="ppmOvT">-</span><span id="ppmWiT">-</span></div>
       </div>
+    </div>
+  </div>
+
+  <div class="share-section">
+    <h2>공유 기록 (공용 폴더 CSV)</h2>
+    <div class="hint" style="margin:0 0 6px 0;">※ 분석 결과를 공용 폴더의 CSV 파일에 쌓아 함께 조회합니다. Chrome 또는 Edge 에서 사용하세요.
+      처음 한 번 [공용 CSV 연결]로 아래 폴더의 CSV 파일을 선택하면, 다음부터는 [허용]만 누르면 됩니다.</div>
+    <div class="share-path" id="sharePathText"></div>
+    <div class="share-bar">
+      <button type="button" onclick="connectCsv()">공용 CSV 연결</button>
+      <button type="button" onclick="copySharePath()">폴더 경로 복사</button>
+      <button type="button" onclick="refreshRecords()">기록 새로고침</button>
+      <label style="font-size:13px; font-weight:600; margin-left:8px;">작성자</label>
+      <input type="text" id="author" placeholder="이름" style="width:110px;">
+      <input type="text" id="recordSearch" placeholder="제목 / Job / 작성자 검색" oninput="renderRecords()" style="flex:1; min-width:180px;">
+    </div>
+    <div id="shareStatus"></div>
+    <div class="record-wrap">
+      <table class="record-table">
+        <thead><tr><th>저장일시</th><th>제목(Lot)</th><th>Job(부분군)</th><th>N</th><th>평균</th><th>Cpk</th><th>Ppk</th><th>작성자</th><th></th></tr></thead>
+        <tbody id="recordBody"><tr><td colspan="9" class="empty">저장된 기록이 없습니다.</td></tr></tbody>
+      </table>
     </div>
   </div>
 </div>
@@ -742,6 +808,7 @@ function analyzeData() {
   setText('ppmWiL', fmt(expWi.lo, 2));
   setText('ppmWiU', fmt(expWi.hi, 2));
   setText('ppmWiT', fmt(expWi.total, 2));
+  rememberRecord(groups);
 
   const titleInput = document.getElementById('reportTitle').value.trim();
   document.getElementById('reportTitleDisplay').innerText = titleInput;
@@ -1339,6 +1406,299 @@ function saveFullReport() {
     alert('리포트 저장 중 오류가 발생했습니다.');
   }
 }
+
+// =====================================================================
+//  공유 CSV 기록 (공용 폴더의 CSV 파일에 결과를 쌓고 함께 조회)
+//  - Chrome / Edge 의 파일 접근 기능(File System Access API) 사용
+//  - 처음 한 번 CSV 파일을 연결하면 다음부터는 [허용]만 누르면 됨
+// =====================================================================
+const SHARE_PATH = '\\\\AAS-PTK-CERAMIC\\ASKR_Production\\01_MFG-line\\00. 공정관리\\01. Element Line\\09. 전반\\전반\\Chip\\선행,양산data\\2026';
+const CSV_COLUMNS = [
+  '저장일시', '작성자', '제목(Lot)', 'Job(부분군)', '데이터배열', '부분군(개수x크기)', '군내추정방법', '불편화상수',
+  'LSL', 'Target', 'USL', 'N', '평균', 'StDev(전체)', 'StDev(군내)',
+  'Cp', 'CPL', 'CPU', 'Cpk', 'CCpk', 'Pp', 'PPL', 'PPU', 'Ppk', 'Cpm',
+  'PPM관측', 'PPM기대(전체)', 'PPM기대(군내)', '원본데이터'
+];
+const LAYOUT_NAMES = { individual: '개별값', size: '부분군크기지정', rows: '부분군행위치' };
+const METHOD_NAMES = { pooled: '합동표준편차', rbar: 'Rbar', sbar: 'Sbar' };
+
+let lastRecord = null;   // 마지막 분석 결과 (CSV 한 줄)
+let csvHandle = null;    // 연결된 CSV 파일
+let csvRecords = [];     // 읽어온 기록
+
+// ---------- 마지막 분석 결과를 CSV 한 줄 형태로 보관 ----------
+function rememberRecord(groups) {
+  const t = id => document.getElementById(id).innerText;
+  const layout = document.getElementById('layout').value;
+  lastRecord = {
+    '제목(Lot)': document.getElementById('reportTitle').value.trim(),
+    'Job(부분군)': groups.map(g => g.name).join(', '),
+    '데이터배열': LAYOUT_NAMES[layout],
+    '부분군(개수x크기)': t('txtSubgroups'),
+    '군내추정방법': layout === 'individual' ? '이동범위(MR)' : METHOD_NAMES[document.getElementById('withinMethod').value],
+    '불편화상수': document.getElementById('unbiased').checked ? 'Y' : 'N',
+    'LSL': t('txtLSL'), 'Target': t('txtTarget'), 'USL': t('txtUSL'),
+    'N': t('txtN'), '평균': t('txtMean'), 'StDev(전체)': t('txtStdOverall'), 'StDev(군내)': t('txtStd'),
+    'Cp': t('txtCp'), 'CPL': t('txtCpl'), 'CPU': t('txtCpu'), 'Cpk': t('txtCpk'), 'CCpk': t('txtCCpk'),
+    'Pp': t('txtPp'), 'PPL': t('txtPpl'), 'PPU': t('txtPpu'), 'Ppk': t('txtPpk'), 'Cpm': t('txtCpm'),
+    'PPM관측': t('ppmObsT'), 'PPM기대(전체)': t('ppmOvT'), 'PPM기대(군내)': t('ppmWiT'),
+    // 다시 불러오기용: 그룹명:값 값 값 | 그룹명:값 ...
+    '원본데이터': groups.map(g => `${g.name.replace(/[|:]/g, ' ')}:${g.data.join(' ')}`).join(' | '),
+    '_settings': { subgroupSize: document.getElementById('subgroupSize').value, layout,
+                   method: document.getElementById('withinMethod').value }
+  };
+  document.getElementById('saveCsvBtn').disabled = false;
+}
+
+// ---------- CSV 읽기 / 쓰기 ----------
+function csvEscape(v) {
+  const s = v === undefined || v === null ? '' : String(v);
+  return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+}
+
+function parseCsv(text) {
+  const rows = [];
+  let row = [], field = '', inQuotes = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inQuotes) {
+      if (c === '"') {
+        if (text[i + 1] === '"') { field += '"'; i++; } else inQuotes = false;
+      } else field += c;
+    } else if (c === '"') inQuotes = true;
+    else if (c === ',') { row.push(field); field = ''; }
+    else if (c === '\n' || c === '\r') {
+      if (c === '\r' && text[i + 1] === '\n') i++;
+      row.push(field); rows.push(row); row = []; field = '';
+    } else field += c;
+  }
+  if (field !== '' || row.length) { row.push(field); rows.push(row); }
+  return rows.filter(r => r.some(f => f !== ''));
+}
+
+async function readCsvFile() {
+  const file = await csvHandle.getFile();
+  let text = await file.text();
+  if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+  const rows = parseCsv(text);
+  const header = rows.length ? rows[0] : [];
+  const records = rows.slice(1).map(r => {
+    const rec = {};
+    header.forEach((h, i) => { rec[h] = r[i] || ''; });
+    return rec;
+  });
+  return { file, header, records };
+}
+
+function hasFsApi() {
+  return typeof window.showOpenFilePicker === 'function';
+}
+
+// 연결된 파일 핸들은 IndexedDB 에 보관 (다음에 열 때 다시 고르지 않도록)
+function idb(action, value) {
+  return new Promise(resolve => {
+    try {
+      const req = indexedDB.open('process-capability', 1);
+      req.onupgradeneeded = () => req.result.createObjectStore('kv');
+      req.onerror = () => resolve(null);
+      req.onsuccess = () => {
+        const tx = req.result.transaction('kv', action === 'get' ? 'readonly' : 'readwrite');
+        const store = tx.objectStore('kv');
+        const r = action === 'get' ? store.get('csvHandle') : store.put(value, 'csvHandle');
+        r.onsuccess = () => resolve(r.result || null);
+        r.onerror = () => resolve(null);
+      };
+    } catch (e) { resolve(null); }
+  });
+}
+
+async function ensurePermission(askUser) {
+  if (!csvHandle) return false;
+  const opts = { mode: 'readwrite' };
+  if (await csvHandle.queryPermission(opts) === 'granted') return true;
+  if (!askUser) return false;
+  return await csvHandle.requestPermission(opts) === 'granted';
+}
+
+function setShareStatus(text, isError) {
+  const el = document.getElementById('shareStatus');
+  el.innerText = text;
+  el.style.color = isError ? '#c0392b' : '#374151';
+}
+
+async function connectCsv() {
+  if (!hasFsApi()) {
+    alert('이 브라우저는 공용 CSV 연결을 지원하지 않습니다.\nChrome 또는 Edge 로 HTML 파일을 열어주세요.');
+    return;
+  }
+  try {
+    const [handle] = await window.showOpenFilePicker({
+      id: 'capability-csv',
+      types: [{ description: 'CSV 파일', accept: { 'text/csv': ['.csv'] } }],
+      multiple: false
+    });
+    csvHandle = handle;
+    await idb('put', handle);
+    if (await ensurePermission(true)) await refreshRecords();
+  } catch (e) {
+    if (e.name !== 'AbortError') setShareStatus('파일 연결 실패: ' + e.message, true);
+  }
+}
+
+async function refreshRecords(askUser = true) {
+  if (!csvHandle) { setShareStatus('연결된 CSV 파일이 없습니다. [공용 CSV 연결]을 눌러주세요.', true); return; }
+  if (!(await ensurePermission(askUser))) {
+    setShareStatus(`'${csvHandle.name}' 연결됨 - [기록 새로고침]을 눌러 접근을 허용해주세요.`);
+    return;
+  }
+  try {
+    const { records } = await readCsvFile();
+    csvRecords = records;
+    renderRecords();
+    setShareStatus(`연결된 파일: ${csvHandle.name}  (기록 ${records.length}건, ${new Date().toLocaleTimeString()} 기준)`);
+  } catch (e) {
+    setShareStatus('CSV 읽기 실패: ' + e.message, true);
+  }
+}
+
+// 저장 중 중복 클릭 방지
+let csvSaving = false;
+async function saveToCsv() {
+  if (csvSaving) return;
+  csvSaving = true;
+  try { await saveToCsvOnce(); } finally { csvSaving = false; }
+}
+
+async function saveToCsvOnce() {
+  if (!lastRecord) { alert('먼저 분석을 실행해주세요.'); return; }
+  if (!lastRecord['제목(Lot)']) { alert('리포트 제목(Lot)을 입력해주세요. 공유 기록에서 구분하는 이름으로 사용됩니다.'); return; }
+  const author = document.getElementById('author').value.trim();
+  if (!author) { alert('작성자 이름을 입력해주세요.'); document.getElementById('author').focus(); return; }
+  try { localStorage.setItem('capability-author', author); } catch (e) {}
+
+  if (!hasFsApi()) { downloadRecordCsv(author); return; }
+  if (!csvHandle) { await connectCsv(); if (!csvHandle) return; }
+  if (!(await ensurePermission(true))) { alert('CSV 파일 접근이 허용되지 않았습니다.'); return; }
+
+  const now = new Date();
+  const pad = v => String(v).padStart(2, '0');
+  const rec = Object.assign({}, lastRecord, {
+    '저장일시': `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`,
+    '작성자': author
+  });
+
+  try {
+    // 저장 직전에 다시 읽어서 파일의 머리글 순서대로 한 줄을 끝에 덧붙임
+    const { file, header } = await readCsvFile();
+    const columns = header.length ? header : CSV_COLUMNS;
+    let text = columns.map(h => csvEscape(rec[h])).join(',') + '\r\n';
+    let position = file.size;
+    if (!header.length) {
+      text = '﻿' + CSV_COLUMNS.join(',') + '\r\n' + text;
+      position = 0;
+    } else {
+      const tail = await file.slice(Math.max(0, file.size - 1)).text();
+      if (tail !== '\n' && tail !== '') text = '\r\n' + text;
+    }
+    const writable = await csvHandle.createWritable({ keepExistingData: true });
+    await writable.seek(position);
+    await writable.write(text);
+    await writable.close();
+    await refreshRecords(false);
+    alert(`공유 CSV에 저장했습니다.\n제목: ${rec['제목(Lot)']}\nJob: ${rec['Job(부분군)']}`);
+  } catch (e) {
+    console.error(e);
+    const locked = /NoModification|InvalidState|lock|access/i.test(e.name + ' ' + e.message);
+    alert('CSV 저장에 실패했습니다.' + (locked
+      ? '\n\n다른 사람이 엑셀에서 CSV 파일을 열어두면 저장할 수 없습니다.\n엑셀에서 파일을 닫은 뒤 다시 시도해주세요.'
+      : '\n\n' + e.message));
+  }
+}
+
+// 파일 접근 기능이 없는 브라우저: 결과 한 줄짜리 CSV 를 내려받기
+function downloadRecordCsv(author) {
+  const rec = Object.assign({}, lastRecord, { '저장일시': new Date().toLocaleString(), '작성자': author });
+  const text = '﻿' + CSV_COLUMNS.join(',') + '\r\n' + CSV_COLUMNS.map(h => csvEscape(rec[h])).join(',') + '\r\n';
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(new Blob([text], { type: 'text/csv' }));
+  link.download = `capability_${timestampSuffix()}.csv`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  alert('이 브라우저는 공용 CSV 직접 저장을 지원하지 않아 결과를 파일로 내려받았습니다.\nChrome 또는 Edge 사용을 권장합니다.');
+}
+
+// ---------- 기록 목록 ----------
+function renderRecords() {
+  const q = document.getElementById('recordSearch').value.trim().toLowerCase();
+  const list = csvRecords
+    .map((r, i) => ({ r, i }))
+    .filter(({ r }) => !q || [r['제목(Lot)'], r['Job(부분군)'], r['작성자']].join(' ').toLowerCase().includes(q))
+    .reverse()
+    .slice(0, 200);
+  const esc = s => String(s || '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const body = list.map(({ r, i }) => `<tr>
+      <td>${esc(r['저장일시'])}</td><td>${esc(r['제목(Lot)'])}</td><td>${esc(r['Job(부분군)'])}</td>
+      <td class="num">${esc(r['N'])}</td><td class="num">${esc(r['평균'])}</td>
+      <td class="num">${esc(r['Cpk'])}</td><td class="num">${esc(r['Ppk'])}</td><td>${esc(r['작성자'])}</td>
+      <td>${r['원본데이터'] ? `<button type="button" onclick="loadRecord(${i})">불러오기</button>` : ''}</td></tr>`).join('');
+  document.getElementById('recordBody').innerHTML = body ||
+    `<tr><td colspan="9" class="empty">${csvRecords.length ? '검색 결과가 없습니다.' : '저장된 기록이 없습니다.'}</td></tr>`;
+}
+
+// 기록을 입력칸으로 되돌리고 다시 분석
+function loadRecord(index) {
+  const r = csvRecords[index];
+  if (!r || !r['원본데이터']) return;
+  const setVal = (id, v) => { document.getElementById(id).value = (v === '*' || v === undefined) ? '' : v; };
+  setVal('reportTitle', r['제목(Lot)']);
+  setVal('lsl', r['LSL']); setVal('target', r['Target']); setVal('usl', r['USL']);
+
+  const layout = Object.keys(LAYOUT_NAMES).find(k => LAYOUT_NAMES[k] === r['데이터배열']) || 'individual';
+  document.getElementById('layout').value = layout;
+  const method = Object.keys(METHOD_NAMES).find(k => METHOD_NAMES[k] === r['군내추정방법']);
+  if (method) document.getElementById('withinMethod').value = method;
+  document.getElementById('unbiased').checked = r['불편화상수'] !== 'N';
+  const m = /×\s*(\d+)/.exec(r['부분군(개수x크기)'] || '');
+  if (layout === 'size' && m) document.getElementById('subgroupSize').value = m[1];
+  updateLayoutUi();
+
+  const container = document.getElementById('groupsContainer');
+  container.innerHTML = '';
+  groupCounter = 0;
+  r['원본데이터'].split('|').forEach(part => {
+    const idx = part.indexOf(':');
+    if (idx < 0) return;
+    addGroup();
+    const row = container.lastElementChild;
+    row.querySelector('.group-name').value = part.slice(0, idx).trim();
+    row.querySelector('.group-data').value = part.slice(idx + 1).trim().split(/\s+/).join('\n');
+  });
+  analyzeData();
+  document.getElementById('reportCapture').scrollIntoView({ behavior: 'smooth' });
+}
+
+function copySharePath() {
+  const done = () => alert('경로를 복사했습니다.\n파일 선택 창의 주소 표시줄에 붙여넣고 Enter 를 누르면 공용 폴더로 이동합니다.');
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(SHARE_PATH).then(done, () => prompt('아래 경로를 복사하세요:', SHARE_PATH));
+  } else {
+    prompt('아래 경로를 복사하세요:', SHARE_PATH);
+  }
+}
+
+// 페이지를 열 때: 작성자 이름 복원, 이전에 연결한 CSV 가 있으면 다시 연결
+(async function initShare() {
+  document.getElementById('sharePathText').innerText = SHARE_PATH;
+  try { document.getElementById('author').value = localStorage.getItem('capability-author') || ''; } catch (e) {}
+  if (!hasFsApi()) {
+    setShareStatus('이 브라우저는 공용 CSV 연결을 지원하지 않습니다. Chrome 또는 Edge 로 열어주세요.', true);
+    return;
+  }
+  csvHandle = await idb('get');
+  if (csvHandle) await refreshRecords(false);
+  else setShareStatus('연결된 CSV 파일이 없습니다. [공용 CSV 연결]을 눌러 공용 폴더의 CSV 파일을 선택해주세요.');
+})();
 </script>
 
 </body>

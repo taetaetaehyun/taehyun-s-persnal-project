@@ -57,6 +57,18 @@
     color: #1f2430;
     background: #fbfbfc;
   }
+  .input-grid.four { grid-template-columns: 1fr 1fr 1fr 1fr; }
+  .field .check {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    font-weight: 400;
+    color: #1f2430;
+    padding: 9px 0;
+    margin: 0;
+  }
+  .field .check input { width: auto; margin: 0; }
   .field textarea {
     resize: vertical;
     min-height: 90px;
@@ -127,6 +139,19 @@
     margin-left: 6px;
   }
   .reset-group-btn:hover { background: #ffedd5; }
+  .split-group-btn {
+    background: #ecfdf5;
+    border: 1px solid #86efac;
+    color: #166534;
+    border-radius: 6px;
+    padding: 8px 14px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    margin-top: 2px;
+    margin-left: 6px;
+  }
+  .split-group-btn:hover { background: #d1fae5; }
 
   .analyze-btn {
     width: 100%;
@@ -195,11 +220,24 @@
   .data-row span:first-child { color: #333; }
   .data-row span:last-child { font-weight: 600; }
 
-  .right-col {
+  .left-col, .right-col {
     display: flex;
     flex-direction: column;
     gap: 10px;
   }
+
+  .perf-box {
+    grid-column: 1 / -1;
+    justify-self: start;
+    width: 520px;
+  }
+  .perf-box .data-row {
+    display: grid;
+    grid-template-columns: 1.3fr 1fr 1fr 1fr;
+  }
+  .perf-box .data-row span { text-align: right; font-weight: 400; }
+  .perf-box .data-row span:first-child { text-align: left; }
+  .perf-box .data-row.perf-head span { font-weight: 700; }
 
   .report-title {
     grid-column: 1 / -1;
@@ -241,10 +279,14 @@
     <input type="text" id="reportTitle" placeholder="예: point 1의 공정능력">
   </div>
 
-  <div class="input-grid">
+  <div class="input-grid four">
     <div class="field">
       <label>하한 규격 (LSL)</label>
       <input type="number" id="lsl" value="45" step="any">
+    </div>
+    <div class="field">
+      <label>목표값 (Target, 선택)</label>
+      <input type="number" id="target" placeholder="비워두면 *" step="any">
     </div>
     <div class="field">
       <label>상한 규격 (USL)</label>
@@ -255,7 +297,34 @@
       <input type="number" id="binWidth" value="0.1" placeholder="예: 0.1" step="any">
     </div>
   </div>
-  <div class="hint" style="margin-top:-14px;">※ LSL 또는 USL 중 한쪽 칸을 비워두면 편측 규격(단측 검정)으로 계산됩니다.</div>
+  <div class="hint" style="margin-top:-14px;">※ LSL 또는 USL 중 한쪽 칸을 비워두면 편측 규격(단측 검정)으로 계산됩니다. 목표값을 넣으면 Cpm이 계산됩니다.</div>
+
+  <div class="input-grid four">
+    <div class="field" style="grid-column: span 2;">
+      <label>데이터 배열 형식 (Minitab과 동일)</label>
+      <select id="layout" onchange="updateLayoutUi()">
+        <option value="individual">단일 열 - 개별값 (부분군 크기 1)</option>
+        <option value="size">단일 열 - 부분군 크기 지정</option>
+        <option value="rows">부분군 행 위치 (각 그룹 = 열, 같은 행 = 한 부분군)</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>부분군 크기</label>
+      <input type="number" id="subgroupSize" value="5" min="2" step="1" disabled>
+    </div>
+    <div class="field">
+      <label>군내 표준편차 추정</label>
+      <select id="withinMethod">
+        <option value="pooled">합동 표준편차 (기본)</option>
+        <option value="rbar">Rbar (범위 평균)</option>
+        <option value="sbar">Sbar (표준편차 평균)</option>
+      </select>
+    </div>
+  </div>
+  <div class="field" style="margin-top:-8px;">
+    <label class="check"><input type="checkbox" id="unbiased" checked> 불편화 상수 사용 (Minitab 기본값: 사용)</label>
+  </div>
+  <div class="hint" id="layoutHint" style="margin-top:0;"></div>
 
   <div class="field">
     <label>차트 종류</label>
@@ -278,8 +347,10 @@
     </div>
     <button type="button" class="add-group-btn" onclick="addGroup()">+ 그룹 추가</button>
     <button type="button" class="reset-group-btn" onclick="resetGroups()">그룹 초기화</button>
+    <button type="button" class="split-group-btn" onclick="splitPastedTable()">엑셀 표 → 열별 그룹 나누기</button>
   </div>
-  <div class="hint">※ 줄바꿈(엔터), 탭, 띄어쓰기, 쉼표 모두 자동으로 인식합니다. 그룹을 여러 개 추가하면 박스플롯에서 함께 비교됩니다.</div>
+  <div class="hint">※ 줄바꿈(엔터), 탭, 띄어쓰기, 쉼표 모두 자동으로 인식합니다. 그룹을 여러 개 추가하면 박스플롯에서 함께 비교됩니다.<br>
+  ※ 엑셀에서 여러 열(머리글 포함 가능)을 복사해 첫 번째 그룹 칸에 붙여넣고 [엑셀 표 → 열별 그룹 나누기]를 누르면 열마다 그룹이 만들어집니다.</div>
 
   <button class="analyze-btn" onclick="analyzeData()">분석 실행 (Analyze)</button>
 
@@ -291,14 +362,18 @@
   <div id="reportCapture">
     <div class="dashboard-grid" id="dashboardGrid">
       <div class="report-title" id="reportTitleDisplay"></div>
-      <div class="data-box">
-        <div class="data-box-title">Process Data</div>
-        <div class="data-row"><span>LSL</span><span id="txtLSL">-</span></div>
-        <div class="data-row"><span>USL</span><span id="txtUSL">-</span></div>
-        <div class="data-row"><span>Sample Mean</span><span id="txtMean">-</span></div>
-        <div class="data-row"><span>Sample N</span><span id="txtN">-</span></div>
-        <div class="data-row"><span>StDev (Within)</span><span id="txtStd">-</span></div>
-        <div class="data-row"><span>StDev (Overall)</span><span id="txtStdOverall">-</span></div>
+      <div class="left-col">
+        <div class="data-box">
+          <div class="data-box-title">Process Data</div>
+          <div class="data-row"><span>LSL</span><span id="txtLSL">-</span></div>
+          <div class="data-row"><span>Target</span><span id="txtTarget">-</span></div>
+          <div class="data-row"><span>USL</span><span id="txtUSL">-</span></div>
+          <div class="data-row"><span>Sample Mean</span><span id="txtMean">-</span></div>
+          <div class="data-row"><span>Sample N</span><span id="txtN">-</span></div>
+          <div class="data-row"><span>Subgroups</span><span id="txtSubgroups">-</span></div>
+          <div class="data-row"><span>StDev (Overall)</span><span id="txtStdOverall">-</span></div>
+          <div class="data-row"><span>StDev (Within)</span><span id="txtStd">-</span></div>
+        </div>
       </div>
 
       <div class="chart-wrap" id="chartWrap">
@@ -323,6 +398,14 @@
           <div class="data-row"><span>Cpm</span><span id="txtCpm">-</span></div>
         </div>
       </div>
+
+      <div class="data-box perf-box">
+        <div class="data-box-title">Performance</div>
+        <div class="data-row perf-head"><span></span><span>Observed</span><span>Exp. Overall</span><span>Exp. Within</span></div>
+        <div class="data-row"><span>PPM &lt; LSL</span><span id="ppmObsL">-</span><span id="ppmOvL">-</span><span id="ppmWiL">-</span></div>
+        <div class="data-row"><span>PPM &gt; USL</span><span id="ppmObsU">-</span><span id="ppmOvU">-</span><span id="ppmWiU">-</span></div>
+        <div class="data-row"><span>PPM Total</span><span id="ppmObsT">-</span><span id="ppmOvT">-</span><span id="ppmWiT">-</span></div>
+      </div>
     </div>
   </div>
 </div>
@@ -335,6 +418,9 @@ let groupCounter = 1;
 const FONT = "Tahoma, 'Malgun Gothic', sans-serif";
 const SPEC_COLOR = '#c00000';
 const GRID_COLOR = '#dcdcdc';
+const TARGET_COLOR = '#00a651';
+const OVERALL_COLOR = '#b00000';
+const WITHIN_COLOR = '#404040';
 const PALETTE = ['#4472c4', '#ed7d31', '#a5a5a5', '#ffc000', '#70ad47', '#5b9bd5', '#c00000', '#7030a0'];
 
 const normalPdf = (x, mean, std) => (1 / (std * Math.sqrt(2 * Math.PI))) * Math.exp(-0.5 * Math.pow((x - mean) / std, 2));
@@ -386,72 +472,275 @@ function getGroups() {
   return groups;
 }
 
-const fmt = (v, d) => (v === null || !isFinite(v)) ? '*' : v.toFixed(d);
+const fmt = (v, d) => (v === null || v === undefined || !isFinite(v)) ? '*' : v.toFixed(d);
+
+// 엑셀에서 여러 열을 복사해 첫 번째 그룹에 붙여넣은 경우 → 열마다 그룹으로 분리
+function splitPastedTable() {
+  const first = document.querySelector('#groupsContainer .group-row');
+  if (!first) { alert('그룹이 없습니다. [+ 그룹 추가]로 그룹을 만든 뒤 붙여넣어 주세요.'); return; }
+  const lines = first.querySelector('.group-data').value.split(/\r?\n/).filter(l => l.trim() !== '');
+  const table = lines.map(l => l.split('\t').map(c => c.trim()));
+  const nCols = Math.max(0, ...table.map(r => r.length));
+  if (nCols < 2) { alert('탭으로 구분된 여러 열 데이터가 아닙니다.\n엑셀에서 여러 열을 복사해 첫 번째 그룹 칸에 붙여넣어 주세요.'); return; }
+
+  // 첫 줄에 숫자가 아닌 칸이 있으면 머리글(그룹명)로 사용
+  const isNum = c => c !== '' && !isNaN(Number(c));
+  const hasHeader = table[0].some(c => c !== '' && !isNum(c));
+  const header = hasHeader ? table.shift() : [];
+
+  const container = document.getElementById('groupsContainer');
+  container.innerHTML = '';
+  groupCounter = 0;
+  for (let c = 0; c < nCols; c++) {
+    const values = table.map(r => r[c] || '').filter(isNum);
+    if (values.length === 0) continue;
+    addGroup();
+    const row = container.lastElementChild;
+    row.querySelector('.group-name').value = header[c] || `Group ${groupCounter}`;
+    row.querySelector('.group-data').value = values.join('\n');
+  }
+  if (container.children.length > 1) {
+    document.getElementById('layout').value = 'rows';
+    updateLayoutUi();
+  }
+}
+
+function updateLayoutUi() {
+  const layout = document.getElementById('layout').value;
+  document.getElementById('subgroupSize').disabled = layout !== 'size';
+  document.getElementById('withinMethod').disabled = layout === 'individual';
+  const hints = {
+    individual: '※ 모든 그룹을 순서대로 이어 붙인 1개 열로 보고, 군내 표준편차는 이동범위 평균(MR, 길이 2) / d2로 계산합니다.',
+    size: '※ 모든 그룹을 이어 붙인 1개 열을 위에서부터 지정한 크기씩 잘라 부분군으로 사용합니다.',
+    rows: '※ Minitab에서 여러 열을 "부분군 행 위치"로 선택한 것과 같습니다. 각 그룹이 한 열이고, 같은 행(예: 같은 Lot Date)의 값들이 하나의 부분군이 됩니다.'
+  };
+  document.getElementById('layoutHint').innerText = hints[layout];
+}
+
+// =====================================================================
+//  통계 함수 (Minitab 공정 능력 분석(정규 분포)과 같은 공식)
+// =====================================================================
+function logGamma(x) {
+  const g = [76.18009172947146, -86.50532032941677, 24.01409824083091,
+             -1.231739572450155, 0.1208650973866179e-2, -0.5395239384953e-5];
+  let y = x, tmp = x + 5.5;
+  tmp -= (x + 0.5) * Math.log(tmp);
+  let ser = 1.000000000190015;
+  for (let j = 0; j < 6; j++) ser += g[j] / ++y;
+  return -tmp + Math.log(2.5066282746310005 * ser / x);
+}
+
+// 불편화 상수 c4(n)
+function c4(n) {
+  if (n < 2) return 1;
+  return Math.sqrt(2 / (n - 1)) * Math.exp(logGamma(n / 2) - logGamma((n - 1) / 2));
+}
+
+// 관리도 상수 d2, d3 (n = 2 ~ 25)
+const D2 = [0, 0, 1.128, 1.693, 2.059, 2.326, 2.534, 2.704, 2.847, 2.970, 3.078, 3.173, 3.258, 3.336,
+            3.407, 3.472, 3.532, 3.588, 3.640, 3.689, 3.735, 3.778, 3.819, 3.858, 3.895, 3.931];
+const D3 = [0, 0, 0.8525, 0.8884, 0.8798, 0.8641, 0.8480, 0.8332, 0.8198, 0.8078, 0.7971, 0.7873, 0.7785, 0.7704,
+            0.7630, 0.7562, 0.7499, 0.7441, 0.7386, 0.7335, 0.7287, 0.7272, 0.7199, 0.7159, 0.7121, 0.7084];
+
+// 표준정규분포 누적확률
+function normCdf(z) {
+  if (z === Infinity) return 1;
+  if (z === -Infinity) return 0;
+  return 0.5 * erfc(-z / Math.SQRT2);
+}
+function erfc(x) {
+  const z = Math.abs(x);
+  const t = 1 / (1 + 0.5 * z);
+  const r = t * Math.exp(-z * z - 1.26551223 + t * (1.00002368 + t * (0.37409196 + t * (0.09678418 +
+    t * (-0.18628806 + t * (0.27886807 + t * (-1.13520398 + t * (1.48851587 +
+    t * (-0.82215223 + t * 0.17087277)))))))));
+  return x >= 0 ? r : 2 - r;
+}
+
+const sum = arr => arr.reduce((a, b) => a + b, 0);
+const avg = arr => sum(arr) / arr.length;
+function sampleStd(arr) {
+  const m = avg(arr);
+  return Math.sqrt(sum(arr.map(v => (v - m) * (v - m))) / (arr.length - 1));
+}
+
+// 데이터 배열 형식에 따라 부분군 구성 (개별값이면 null)
+function buildSubgroups(groups, layout, size) {
+  if (layout === 'rows') {
+    const maxLen = Math.max(...groups.map(g => g.data.length));
+    const subgroups = [];
+    for (let i = 0; i < maxLen; i++) {
+      const row = groups.map(g => g.data[i]).filter(v => v !== undefined);
+      if (row.length) subgroups.push(row);
+    }
+    return subgroups;
+  }
+  if (layout === 'size') {
+    const all = groups.flatMap(g => g.data);
+    const subgroups = [];
+    for (let i = 0; i < all.length; i += size) subgroups.push(all.slice(i, i + size));
+    return subgroups;
+  }
+  return null;
+}
+
+// 군내 표준편차
+function withinStdDev(data, subgroups, method, unbiased) {
+  if (!subgroups) {
+    // 개별값: 이동범위 평균 (길이 2) / d2(2)
+    let mrSum = 0;
+    for (let i = 1; i < data.length; i++) mrSum += Math.abs(data[i] - data[i - 1]);
+    return (mrSum / (data.length - 1)) / D2[2];
+  }
+
+  const valid = subgroups.filter(sg => sg.length >= 2);
+  if (valid.length === 0) return NaN;
+
+  if (method === 'rbar') {
+    // Σ f_i·(R_i/d2(n_i)) / Σ f_i,  f_i = d2² / d3²
+    let num = 0, den = 0;
+    valid.forEach(sg => {
+      const n = Math.min(sg.length, 25);
+      const f = (D2[n] * D2[n]) / (D3[n] * D3[n]);
+      num += f * (Math.max(...sg) - Math.min(...sg)) / D2[n];
+      den += f;
+    });
+    return num / den;
+  }
+
+  if (method === 'sbar') {
+    if (!unbiased) return avg(valid.map(sampleStd));
+    // Σ h_i·(s_i/c4(n_i)) / Σ h_i,  h_i = c4² / (1 - c4²)
+    let num = 0, den = 0;
+    valid.forEach(sg => {
+      const c = c4(sg.length);
+      const h = (c * c) / (1 - c * c);
+      num += h * sampleStd(sg) / c;
+      den += h;
+    });
+    return num / den;
+  }
+
+  // 합동 표준편차: Sp = √(ΣΣ(x - x̄ᵢ)² / Σ(nᵢ - 1)),  불편화 시 Sp / c4(d + 1)
+  let ss = 0, d = 0;
+  valid.forEach(sg => {
+    const m = avg(sg);
+    ss += sum(sg.map(v => (v - m) * (v - m)));
+    d += sg.length - 1;
+  });
+  const sp = Math.sqrt(ss / d);
+  return unbiased ? sp / c4(d + 1) : sp;
+}
+
+function capabilityIndices(mean, sigma, lsl, usl) {
+  const r = { whole: null, lower: null, upper: null, k: null };
+  if (lsl !== null && usl !== null) r.whole = (usl - lsl) / (6 * sigma);
+  if (usl !== null) r.upper = (usl - mean) / (3 * sigma);
+  if (lsl !== null) r.lower = (mean - lsl) / (3 * sigma);
+  if (r.upper !== null && r.lower !== null) r.k = Math.min(r.upper, r.lower);
+  else r.k = r.upper !== null ? r.upper : r.lower;
+  return r;
+}
+
+function expectedPpm(mean, sigma, lsl, usl) {
+  const lo = lsl !== null ? normCdf((lsl - mean) / sigma) * 1e6 : null;
+  const hi = usl !== null ? (1 - normCdf((usl - mean) / sigma)) * 1e6 : null;
+  return { lo, hi, total: (lo || 0) + (hi || 0) };
+}
+
+function readNumber(id) {
+  const raw = document.getElementById(id).value.trim();
+  return raw === '' ? null : parseFloat(raw);
+}
 
 function analyzeData() {
-  const lslRaw = document.getElementById('lsl').value.trim();
-  const uslRaw = document.getElementById('usl').value.trim();
-  const lsl = lslRaw === '' ? null : parseFloat(lslRaw);
-  const usl = uslRaw === '' ? null : parseFloat(uslRaw);
+  const lsl = readNumber('lsl');
+  const usl = readNumber('usl');
+  const target = readNumber('target');
   const binWidthInput = document.getElementById('binWidth').value;
+  const layout = document.getElementById('layout').value;
+  const method = document.getElementById('withinMethod').value;
+  const unbiased = document.getElementById('unbiased').checked;
+  const size = parseInt(document.getElementById('subgroupSize').value, 10);
   const groups = getGroups();
 
   if (lsl === null && usl === null) { alert('LSL 또는 USL 중 최소 하나는 입력해야 합니다.'); return; }
-  if ((lsl !== null && isNaN(lsl)) || (usl !== null && isNaN(usl))) { alert('LSL / USL 값이 올바른 숫자가 아닙니다.'); return; }
+  if ([lsl, usl, target].some(v => v !== null && isNaN(v))) { alert('LSL / 목표값 / USL 값이 올바른 숫자가 아닙니다.'); return; }
   if (groups.length === 0) { alert('데이터가 없습니다. 최소 1개 그룹에 데이터를 입력해주세요.'); return; }
+  if (layout === 'size' && !(size >= 2)) { alert('부분군 크기는 2 이상이어야 합니다.'); return; }
+  if (layout === 'rows' && groups.length < 2) {
+    alert('"부분군 행 위치"는 그룹(열)이 2개 이상 필요합니다.\n여러 열을 한 칸에 붙여넣었다면 [엑셀 표 → 열별 그룹 나누기]를 눌러주세요.');
+    return;
+  }
 
   const data = groups.flatMap(g => g.data);
   const n = data.length;
-
   if (n < 2) { alert('데이터가 부족합니다.'); return; }
 
-  const mean = data.reduce((a, b) => a + b, 0) / n;
-  const variance = data.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / (n - 1);
-  const sampleStd = Math.sqrt(variance);
-  const c4 = (4 * (n - 1)) / (4 * n - 3);
-  const stdOverall = sampleStd / c4;
+  const subgroups = buildSubgroups(groups, layout, size);
+  if (subgroups && !subgroups.some(sg => sg.length >= 2)) { alert('크기가 2 이상인 부분군이 없습니다.'); return; }
 
-  let mrSum = 0;
-  for (let i = 1; i < n; i++) {
-    mrSum += Math.abs(data[i] - data[i - 1]);
+  const mean = avg(data);
+  const s = sampleStd(data);
+  const stdOverall = unbiased ? s / c4(n) : s;
+  const stdWithin = withinStdDev(data, subgroups, method, unbiased);
+
+  const within = capabilityIndices(mean, stdWithin, lsl, usl);
+  const overall = capabilityIndices(mean, stdOverall, lsl, usl);
+
+  // CCpk: 평균 대신 목표값(없으면 규격 중심) 사용
+  let ccpk = null;
+  const center = target !== null ? target : (lsl !== null && usl !== null ? (lsl + usl) / 2 : null);
+  if (center !== null) ccpk = capabilityIndices(center, stdWithin, lsl, usl).k;
+  else ccpk = within.k;
+
+  // Cpm: 목표값 기준 σ = √(Σ(x - T)² / N)
+  let cpm = null;
+  if (target !== null) {
+    const sigmaT = Math.sqrt(sum(data.map(v => (v - target) * (v - target))) / n);
+    const sides = [];
+    if (usl !== null) sides.push(usl - target);
+    if (lsl !== null) sides.push(target - lsl);
+    cpm = Math.min(...sides) / (3 * sigmaT);
   }
-  const mrAvg = mrSum / (n - 1);
-  const d2 = 1.128;
-  const stdWithin = mrAvg / d2;
 
-  let cp = null, cpu = null, cpl = null, cpk = null;
-  if (lsl !== null && usl !== null) cp = (usl - lsl) / (6 * stdWithin);
-  if (usl !== null) cpu = (usl - mean) / (3 * stdWithin);
-  if (lsl !== null) cpl = (mean - lsl) / (3 * stdWithin);
-  if (cpu !== null && cpl !== null) cpk = Math.min(cpu, cpl);
-  else if (cpu !== null) cpk = cpu;
-  else if (cpl !== null) cpk = cpl;
+  // 성능 (PPM)
+  const obsLo = lsl !== null ? data.filter(v => v < lsl).length / n * 1e6 : null;
+  const obsHi = usl !== null ? data.filter(v => v > usl).length / n * 1e6 : null;
+  const expOv = expectedPpm(mean, stdOverall, lsl, usl);
+  const expWi = expectedPpm(mean, stdWithin, lsl, usl);
 
-  let pp = null, ppu = null, ppl = null, ppk = null;
-  if (lsl !== null && usl !== null) pp = (usl - lsl) / (6 * stdOverall);
-  if (usl !== null) ppu = (usl - mean) / (3 * stdOverall);
-  if (lsl !== null) ppl = (mean - lsl) / (3 * stdOverall);
-  if (ppu !== null && ppl !== null) ppk = Math.min(ppu, ppl);
-  else if (ppu !== null) ppk = ppu;
-  else if (ppl !== null) ppk = ppl;
-  const cpm = null;
-
-  document.getElementById('txtLSL').innerText = lsl !== null ? lsl : '*';
-  document.getElementById('txtUSL').innerText = usl !== null ? usl : '*';
-  document.getElementById('txtN').innerText = groups.length > 1 ? `${n} (${groups.length}개 그룹 합산)` : n;
-  document.getElementById('txtMean').innerText = fmt(mean, 4);
-  document.getElementById('txtStd').innerText = fmt(stdWithin, 5);
-  document.getElementById('txtStdOverall').innerText = fmt(stdOverall, 5);
-  document.getElementById('txtCp').innerText = fmt(cp, 3);
-  document.getElementById('txtCpl').innerText = fmt(cpl, 3);
-  document.getElementById('txtCpu').innerText = fmt(cpu, 3);
-  document.getElementById('txtCpk').innerText = fmt(cpk, 3);
-  document.getElementById('txtCCpk').innerText = cp !== null ? fmt(cp, 3) : fmt(cpk, 3);
-  document.getElementById('txtPp').innerText = fmt(pp, 3);
-  document.getElementById('txtPpl').innerText = fmt(ppl, 3);
-  document.getElementById('txtPpu').innerText = fmt(ppu, 3);
-  document.getElementById('txtPpk').innerText = fmt(ppk, 3);
-  document.getElementById('txtCpm').innerText = fmt(cpm, 3);
+  const setText = (id, text) => { document.getElementById(id).innerText = text; };
+  setText('txtLSL', lsl !== null ? lsl : '*');
+  setText('txtTarget', target !== null ? target : '*');
+  setText('txtUSL', usl !== null ? usl : '*');
+  setText('txtN', n);
+  setText('txtSubgroups', subgroups
+    ? (layout === 'rows' || subgroups.every(sg => sg.length === subgroups[0].length)
+        ? `${subgroups.length} × ${subgroups[0].length}` : `${subgroups.length}개`)
+    : '1 (개별값)');
+  setText('txtMean', fmt(mean, 4));
+  setText('txtStd', fmt(stdWithin, 5));
+  setText('txtStdOverall', fmt(stdOverall, 5));
+  setText('txtCp', fmt(within.whole, 2));
+  setText('txtCpl', fmt(within.lower, 2));
+  setText('txtCpu', fmt(within.upper, 2));
+  setText('txtCpk', fmt(within.k, 2));
+  setText('txtCCpk', fmt(ccpk, 2));
+  setText('txtPp', fmt(overall.whole, 2));
+  setText('txtPpl', fmt(overall.lower, 2));
+  setText('txtPpu', fmt(overall.upper, 2));
+  setText('txtPpk', fmt(overall.k, 2));
+  setText('txtCpm', fmt(cpm, 2));
+  setText('ppmObsL', fmt(obsLo, 2));
+  setText('ppmObsU', fmt(obsHi, 2));
+  setText('ppmObsT', fmt((obsLo || 0) + (obsHi || 0), 2));
+  setText('ppmOvL', fmt(expOv.lo, 2));
+  setText('ppmOvU', fmt(expOv.hi, 2));
+  setText('ppmOvT', fmt(expOv.total, 2));
+  setText('ppmWiL', fmt(expWi.lo, 2));
+  setText('ppmWiU', fmt(expWi.hi, 2));
+  setText('ppmWiT', fmt(expWi.total, 2));
 
   const titleInput = document.getElementById('reportTitle').value.trim();
   document.getElementById('reportTitleDisplay').innerText = titleInput;
@@ -464,9 +753,9 @@ function analyzeData() {
   const binWidth = binWidthInput ? parseFloat(binWidthInput) : null;
   const chartType = document.getElementById('chartType').value;
   if (chartType === 'boxplot') {
-    chartState = buildBoxPlot(groups, lsl, usl);
+    chartState = buildBoxPlot(groups, lsl, usl, target);
   } else {
-    chartState = buildHistogram(data, mean, stdWithin, lsl, usl, binWidth);
+    chartState = buildHistogram(data, mean, stdOverall, stdWithin, lsl, usl, target, binWidth);
   }
   redrawChart();
 }
@@ -474,44 +763,51 @@ function analyzeData() {
 // =====================================================================
 //  차트 데이터 계산
 // =====================================================================
-function buildHistogram(data, mean, std, lsl, usl, userBinWidth) {
-  const specValues = [];
-  if (lsl !== null) specValues.push(lsl);
-  if (usl !== null) specValues.push(usl);
-  const pad = std > 0 ? std * 1.5 : 0;
-  let minVal = Math.min(...data, ...specValues) - pad;
-  let maxVal = Math.max(...data, ...specValues) + pad;
+function buildHistogram(data, mean, stdOverall, stdWithin, lsl, usl, target, userBinWidth) {
+  const refValues = [lsl, usl, target].filter(v => v !== null);
+  const sigmas = [stdOverall, stdWithin].filter(v => isFinite(v) && v > 0);
+  const pad = sigmas.length ? Math.max(...sigmas) * 1.5 : 0;
+  let minVal = Math.min(...data, ...refValues) - pad;
+  let maxVal = Math.max(...data, ...refValues) + pad;
   if (!(maxVal > minVal)) { minVal -= 1; maxVal += 1; }
 
+  // 막대 너비: 입력값 또는 자동 (규격 범위가 아닌 데이터 범위 기준)
   let binWidth = userBinWidth;
-  let binCount;
-  if (!binWidth || binWidth <= 0 || (maxVal - minVal) / binWidth > 2000) {
-    binCount = Math.max(7, Math.ceil(Math.sqrt(data.length)));
-    binWidth = (maxVal - minVal) / binCount;
-  } else {
-    binCount = Math.ceil((maxVal - minVal) / binWidth);
+  if (!(binWidth > 0) || (maxVal - minVal) / binWidth > 2000) {
+    const dMin = Math.min(...data), dMax = Math.max(...data);
+    binWidth = dMax > dMin
+      ? niceStep(dMax - dMin, Math.max(5, Math.ceil(Math.sqrt(data.length))))
+      : (maxVal - minVal) / 20;
   }
+  // 막대 중심이 너비의 배수에 오도록 (정수 데이터가 막대 경계에 걸리지 않음)
+  const binStart = (Math.floor(minVal / binWidth) - 0.5) * binWidth;
+  const binCount = Math.ceil((maxVal - binStart) / binWidth);
 
   const frequencies = [];
   for (let i = 0; i < binCount; i++) {
-    const start = minVal + i * binWidth;
+    const start = binStart + i * binWidth;
     const end = start + binWidth;
     frequencies.push(data.filter(v => v >= start && v < end).length);
   }
 
-  let curve = null;
-  if (std > 0) {
-    const curvePoints = 120;
+  // 정규분포 곡선: 전체(실선) / 군내(점선)
+  const makeCurve = std => {
+    if (!(isFinite(std) && std > 0)) return null;
+    const curvePoints = 200;
     const step = (maxVal - minVal) / (curvePoints - 1);
     const scaleFactor = data.length * binWidth;
-    curve = [];
+    const pts = [];
     for (let i = 0; i < curvePoints; i++) {
       const x = minVal + i * step;
-      curve.push({ x: x, y: scaleFactor * normalPdf(x, mean, std) });
+      pts.push({ x: x, y: scaleFactor * normalPdf(x, mean, std) });
     }
-  }
+    return pts;
+  };
 
-  return { kind: 'histogram', lsl, usl, minVal, maxVal, binWidth, frequencies, curve };
+  return {
+    kind: 'histogram', lsl, usl, target, minVal, maxVal, binStart, binWidth, frequencies,
+    curveOverall: makeCurve(stdOverall), curveWithin: makeCurve(stdWithin)
+  };
 }
 
 function percentile(sortedArr, p) {
@@ -529,7 +825,7 @@ function hexToRgba(hex, alpha) {
   return `rgba(${r},${g},${b},${alpha})`;
 }
 
-function buildBoxPlot(groups, lsl, usl) {
+function buildBoxPlot(groups, lsl, usl, target) {
   const jitterHalf = 0.16;
   const boxes = groups.map((g, idx) => {
     const sorted = [...g.data].sort((a, b) => a - b);
@@ -553,15 +849,13 @@ function buildBoxPlot(groups, lsl, usl) {
     };
   });
 
-  const specValues = [];
-  if (lsl !== null) specValues.push(lsl);
-  if (usl !== null) specValues.push(usl);
+  const specValues = [lsl, usl, target].filter(v => v !== null);
   const allValues = groups.flatMap(g => g.data);
   const dataMin = Math.min(...allValues, ...specValues);
   const dataMax = Math.max(...allValues, ...specValues);
   const range = dataMax - dataMin || 1;
 
-  return { kind: 'boxplot', lsl, usl, boxes, yMin: dataMin - range * 0.1, yMax: dataMax + range * 0.1 };
+  return { kind: 'boxplot', lsl, usl, target, boxes, yMin: dataMin - range * 0.1, yMax: dataMax + range * 0.1 };
 }
 
 // =====================================================================
@@ -582,6 +876,7 @@ function redrawChart() {
 }
 
 window.addEventListener('resize', redrawChart);
+updateLayoutUi();
 
 function renderChart(ctx, w, h, s) {
   if (s.kind === 'boxplot') renderBoxPlot(ctx, w, h, s);
@@ -636,11 +931,24 @@ function drawLegend(ctx, items, w) {
     const total = row.reduce((a, p) => a + p.iw, 0) + gapItem * Math.max(0, row.length - 1);
     let x = w - total;
     row.forEach(({ it, iw }) => {
-      ctx.fillStyle = it.fill;
-      ctx.fillRect(x, y + 2, box, box);
-      ctx.strokeStyle = it.border;
-      ctx.lineWidth = it.borderWidth;
-      ctx.strokeRect(x, y + 2, box, box);
+      if (it.line) {
+        // 선 범례 (실선 / 점선)
+        ctx.save();
+        ctx.strokeStyle = it.border;
+        ctx.lineWidth = it.borderWidth;
+        ctx.setLineDash(it.dash || []);
+        ctx.beginPath();
+        ctx.moveTo(x, y + rowH / 2);
+        ctx.lineTo(x + box, y + rowH / 2);
+        ctx.stroke();
+        ctx.restore();
+      } else {
+        ctx.fillStyle = it.fill;
+        ctx.fillRect(x, y + 2, box, box);
+        ctx.strokeStyle = it.border;
+        ctx.lineWidth = it.borderWidth;
+        ctx.strokeRect(x, y + 2, box, box);
+      }
       ctx.fillStyle = '#000000';
       ctx.textAlign = 'left';
       ctx.textBaseline = 'middle';
@@ -664,13 +972,13 @@ function drawRotatedText(ctx, text, x, y) {
   ctx.restore();
 }
 
-function dashedLine(ctx, x1, y1, x2, y2) {
+function dashedLine(ctx, x1, y1, x2, y2, color) {
   ctx.save();
   ctx.beginPath();
   ctx.moveTo(x1, y1);
   ctx.lineTo(x2, y2);
   ctx.lineWidth = 1.5;
-  ctx.strokeStyle = SPEC_COLOR;
+  ctx.strokeStyle = color || SPEC_COLOR;
   ctx.setLineDash([5, 4]);
   ctx.stroke();
   ctx.restore();
@@ -679,12 +987,13 @@ function dashedLine(ctx, x1, y1, x2, y2) {
 function renderHistogram(ctx, w, h, s) {
   const legendBottom = drawLegend(ctx, [
     { text: '데이터 빈도 (Histogram)', fill: '#bccde5', border: '#000000', borderWidth: 1 },
-    { text: '정규분포 (Normal Curve)', fill: 'rgba(128,0,0,0.15)', border: '#800000', borderWidth: 2 }
+    { text: '전체 (Overall)', line: true, border: OVERALL_COLOR, borderWidth: 2 },
+    { text: '군내 (Within)', line: true, border: WITHIN_COLOR, borderWidth: 2, dash: [5, 3] }
   ], w);
 
   // y축 (정수 눈금)
   let yDataMax = s.frequencies.length ? Math.max(...s.frequencies) : 1;
-  if (s.curve) yDataMax = Math.max(yDataMax, ...s.curve.map(p => p.y));
+  [s.curveOverall, s.curveWithin].forEach(c => { if (c) yDataMax = Math.max(yDataMax, ...c.map(p => p.y)); });
   if (!(yDataMax > 0)) yDataMax = 1;
   const yStep = Math.max(1, Math.ceil(niceStep(yDataMax, 6)));
   const yMax = Math.ceil(yDataMax / yStep) * yStep;
@@ -735,19 +1044,25 @@ function renderHistogram(ctx, w, h, s) {
   ctx.lineWidth = 1;
   s.frequencies.forEach((f, i) => {
     if (f === 0) return;
-    const start = s.minVal + i * s.binWidth;
+    const start = s.binStart + i * s.binWidth;
     const x1 = px(start), x2 = px(start + s.binWidth), y1 = py(f);
     ctx.fillRect(x1, y1, x2 - x1, plot.bottom - y1);
     ctx.strokeRect(x1, y1, x2 - x1, plot.bottom - y1);
   });
-  if (s.curve) {
+  const drawCurve = (curve, color, dash) => {
+    if (!curve) return;
+    ctx.save();
     ctx.beginPath();
-    s.curve.forEach((p, i) => i === 0 ? ctx.moveTo(px(p.x), py(p.y)) : ctx.lineTo(px(p.x), py(p.y)));
-    ctx.strokeStyle = '#800000';
+    curve.forEach((p, i) => i === 0 ? ctx.moveTo(px(p.x), py(p.y)) : ctx.lineTo(px(p.x), py(p.y)));
+    ctx.strokeStyle = color;
     ctx.lineWidth = 2;
     ctx.lineJoin = 'round';
+    ctx.setLineDash(dash);
     ctx.stroke();
-  }
+    ctx.restore();
+  };
+  drawCurve(s.curveOverall, OVERALL_COLOR, []);
+  drawCurve(s.curveWithin, WITHIN_COLOR, [5, 3]);
   ctx.restore();
 
   // 축선
@@ -757,19 +1072,20 @@ function renderHistogram(ctx, w, h, s) {
   ctx.moveTo(plot.left, plot.top); ctx.lineTo(plot.left, plot.bottom); ctx.lineTo(plot.right, plot.bottom);
   ctx.stroke();
 
-  // LSL / USL 세로 점선
-  const spec = (val, label) => {
+  // LSL / Target / USL 세로 점선
+  const spec = (val, label, color) => {
     const x = px(val);
     if (x < plot.left - 0.5 || x > plot.right + 0.5) return;
-    dashedLine(ctx, x, plot.top, x, plot.bottom);
+    dashedLine(ctx, x, plot.top, x, plot.bottom, color);
     ctx.font = `bold 12px ${FONT}`;
-    ctx.fillStyle = SPEC_COLOR;
+    ctx.fillStyle = color || SPEC_COLOR;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'bottom';
     ctx.fillText(label, x, plot.top - 4);
   };
   if (s.lsl !== null) spec(s.lsl, 'LSL');
   if (s.usl !== null) spec(s.usl, 'USL');
+  if (s.target !== null) spec(s.target, 'Target', TARGET_COLOR);
 }
 
 function renderBoxPlot(ctx, w, h, s) {
@@ -780,7 +1096,7 @@ function renderBoxPlot(ctx, w, h, s) {
   const yDec = decimalsOf(yTicks.length > 1 ? yTicks[1] - yTicks[0] : 1);
   ctx.font = `10px ${FONT}`;
   const yTickW = yTicks.length ? Math.max(...yTicks.map(v => ctx.measureText(fmtTick(v, yDec)).width)) : 20;
-  const plot = { left: 28 + yTickW + 6, right: w - 40, top: legendBottom + 12, bottom: h - 10 };
+  const plot = { left: 28 + yTickW + 6, right: w - 50, top: legendBottom + 12, bottom: h - 10 };
   const px = v => plot.left + v / nGroups * (plot.right - plot.left);
   const py = v => plot.bottom - (v - s.yMin) / (s.yMax - s.yMin) * (plot.bottom - plot.top);
 
@@ -837,19 +1153,20 @@ function renderBoxPlot(ctx, w, h, s) {
     ctx.restore();
   });
 
-  // LSL / USL 가로 점선
-  const spec = (val, label) => {
+  // LSL / Target / USL 가로 점선
+  const spec = (val, label, color) => {
     const y = py(val);
     if (y < plot.top - 0.5 || y > plot.bottom + 0.5) return;
-    dashedLine(ctx, plot.left, y, plot.right, y);
+    dashedLine(ctx, plot.left, y, plot.right, y, color);
     ctx.font = `bold 11px ${FONT}`;
-    ctx.fillStyle = SPEC_COLOR;
+    ctx.fillStyle = color || SPEC_COLOR;
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
     ctx.fillText(label, plot.right + 4, y);
   };
   if (s.lsl !== null) spec(s.lsl, 'LSL');
   if (s.usl !== null) spec(s.usl, 'USL');
+  if (s.target !== null) spec(s.target, 'Target', TARGET_COLOR);
 }
 
 // =====================================================================
@@ -959,9 +1276,14 @@ function saveFullReport() {
       ctx.stroke();
 
       boxEl.querySelectorAll('.data-row').forEach(row => {
-        const spans = row.querySelectorAll('span');
-        drawTextIn(ctx, spans[0], `12px ${FONT}`, '#333333', 'left');
-        drawTextIn(ctx, spans[1], `bold 12px ${FONT}`, '#000000', 'right');
+        row.querySelectorAll('span').forEach(span => {
+          if (!span.innerText) return;
+          const cs = getComputedStyle(span);
+          const align = cs.textAlign === 'right' || cs.textAlign === 'end' ? 'right'
+            : cs.textAlign === 'center' ? 'center' : 'left';
+          const bold = parseInt(cs.fontWeight, 10) >= 600;
+          drawTextIn(ctx, span, `${bold ? 'bold ' : ''}12px ${FONT}`, cs.color, align);
+        });
       });
     });
 

@@ -217,7 +217,7 @@
     gap: 8px;
     margin-bottom: 5px;
   }
-  .data-row span:first-child { color: #333; }
+  .data-row span:first-child { color: #333; white-space: nowrap; }
   .data-row span:last-child { font-weight: 600; }
 
   .left-col, .right-col {
@@ -349,6 +349,7 @@
     <button type="button" class="reset-group-btn" onclick="resetGroups()">그룹 초기화</button>
     <button type="button" class="split-group-btn" onclick="splitPastedTable()">엑셀 표 → 열별 그룹 나누기</button>
   </div>
+  <div class="hint" id="pasteNotice" style="display:none; color:#b45309; font-weight:600;"></div>
   <div class="hint">※ 줄바꿈(엔터), 탭, 띄어쓰기, 쉼표 모두 자동으로 인식합니다. 그룹을 여러 개 추가하면 박스플롯에서 함께 비교됩니다.<br>
   ※ 엑셀에서 여러 열(머리글 포함 가능)을 복사해 첫 번째 그룹 칸에 붙여넣고 [엑셀 표 → 열별 그룹 나누기]를 누르면 열마다 그룹이 만들어집니다.</div>
 
@@ -877,6 +878,41 @@ function redrawChart() {
 
 window.addEventListener('resize', redrawChart);
 updateLayoutUi();
+
+// 엑셀에서 붙여넣을 때 화면 표시값(반올림된 값)이 아니라 셀에 저장된 실제 값을 사용
+// (엑셀 클립보드의 HTML에는 x:num 속성으로 실제 값이 들어 있음 - Minitab도 실제 값을 읽음)
+document.addEventListener('paste', e => {
+  const ta = e.target;
+  if (!ta.classList || !ta.classList.contains('group-data') || !e.clipboardData) return;
+  const html = e.clipboardData.getData('text/html');
+  if (!html || html.indexOf('x:num') < 0) return;
+
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  const rows = Array.from(doc.querySelectorAll('tr'));
+  if (rows.length === 0) return;
+
+  let diffCount = 0;
+  const tsv = rows.map(tr => Array.from(tr.querySelectorAll('td, th')).map(td => {
+    const shown = td.textContent.replace(/\s+/g, ' ').trim();
+    const stored = td.getAttribute('x:num');
+    if (stored !== null && stored !== '' && !isNaN(Number(stored))) {
+      if (Number(stored) !== Number(shown.replace(/,/g, ''))) diffCount++;
+      return stored;
+    }
+    return shown;
+  }).join('\t')).join('\n');
+
+  e.preventDefault();
+  ta.setRangeText(tsv, ta.selectionStart, ta.selectionEnd, 'end');
+
+  const notice = document.getElementById('pasteNotice');
+  if (diffCount > 0) {
+    notice.innerText = `※ 엑셀 화면에 보이는 값과 실제 저장값이 다른 셀이 ${diffCount}개 있어, 실제 저장값(소수점 포함)으로 붙여넣었습니다. (Minitab과 같은 방식)`;
+    notice.style.display = 'block';
+  } else {
+    notice.style.display = 'none';
+  }
+});
 
 function renderChart(ctx, w, h, s) {
   if (s.kind === 'boxplot') renderBoxPlot(ctx, w, h, s);

@@ -1,0 +1,987 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Process Capability Report</title>
+<!-- 외부 라이브러리 없이 동작하는 단일 파일 버전 (인터넷 연결 불필요) -->
+<style>
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Malgun Gothic', sans-serif;
+    background: #f5f6f8;
+    margin: 0;
+    padding: 24px;
+    color: #1f2430;
+  }
+  .card {
+    max-width: 900px;
+    margin: 0 auto;
+    background: #ffffff;
+    border: 1px solid #e4e6eb;
+    border-radius: 10px;
+    padding: 24px 28px 28px 28px;
+  }
+  .header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 20px;
+    font-weight: 700;
+    padding-bottom: 16px;
+    border-bottom: 1px solid #e9eaee;
+    margin-bottom: 20px;
+  }
+  .header .icon { font-size: 22px; }
+
+  .input-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 18px;
+  }
+  .field label {
+    display: block;
+    font-size: 13px;
+    font-weight: 600;
+    color: #374151;
+    margin-bottom: 6px;
+  }
+  .field input, .field textarea, .field select {
+    width: 100%;
+    border: 1px solid #d7dae0;
+    border-radius: 6px;
+    padding: 9px 12px;
+    font-size: 14px;
+    font-family: inherit;
+    color: #1f2430;
+    background: #fbfbfc;
+  }
+  .field textarea {
+    resize: vertical;
+    min-height: 90px;
+    line-height: 1.5;
+  }
+  .hint {
+    font-size: 12px;
+    color: #16a34a;
+    margin-top: 6px;
+    margin-bottom: 20px;
+  }
+
+  .group-row {
+    border: 1px solid #d7dae0;
+    border-radius: 6px;
+    padding: 10px;
+    margin-bottom: 10px;
+    background: #fbfbfc;
+  }
+  .group-row-header {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+  .group-row-header .group-name {
+    flex: 1;
+    border: 1px solid #d7dae0;
+    border-radius: 6px;
+    padding: 7px 10px;
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .remove-group-btn {
+    background: #fff1f1;
+    border: 1px solid #f3c2c2;
+    color: #c0392b;
+    border-radius: 6px;
+    padding: 6px 10px;
+    font-size: 12px;
+    cursor: pointer;
+  }
+  .remove-group-btn:hover { background: #ffe1e1; }
+  .group-row textarea.group-data {
+    min-height: 60px;
+  }
+  .add-group-btn {
+    background: #eef2ff;
+    border: 1px solid #c7d2fe;
+    color: #3730a3;
+    border-radius: 6px;
+    padding: 8px 14px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    margin-top: 2px;
+  }
+  .add-group-btn:hover { background: #e0e7ff; }
+  .reset-group-btn {
+    background: #fff7ed;
+    border: 1px solid #fdba74;
+    color: #9a3412;
+    border-radius: 6px;
+    padding: 8px 14px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    margin-top: 2px;
+    margin-left: 6px;
+  }
+  .reset-group-btn:hover { background: #ffedd5; }
+
+  .analyze-btn {
+    width: 100%;
+    background: #1d4ed8;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    padding: 13px;
+    font-size: 15px;
+    font-weight: 700;
+    cursor: pointer;
+    margin-bottom: 22px;
+    letter-spacing: 0.3px;
+  }
+  .analyze-btn:hover { background: #1a41b8; }
+
+  .save-toolbar {
+    display: none;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-bottom: 16px;
+  }
+  .save-toolbar button {
+    background: #ffffff;
+    border: 1px solid #c9cdd6;
+    border-radius: 6px;
+    padding: 8px 14px;
+    font-size: 13px;
+    font-weight: 600;
+    color: #1f2430;
+    cursor: pointer;
+  }
+  .save-toolbar button:hover { background: #f0f3f9; border-color: #1d4ed8; color: #1d4ed8; }
+
+  .dashboard-grid {
+    display: none;
+    grid-template-columns: 170px 1fr 170px;
+    gap: 14px;
+    background: #e8e8e8;
+    border: 1px solid #cfd2d8;
+    border-radius: 6px;
+    padding: 14px;
+    margin-bottom: 16px;
+  }
+  .data-box {
+    background: #ffffff;
+    border: 1px solid #000000;
+    padding: 10px 12px;
+    font-family: 'Tahoma', 'Malgun Gothic', sans-serif;
+    font-size: 12px;
+    align-self: start;
+  }
+  .data-box-title {
+    text-align: center;
+    font-weight: bold;
+    border-bottom: 1px solid #cccccc;
+    padding-bottom: 6px;
+    margin-bottom: 8px;
+  }
+  .data-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 5px;
+  }
+  .data-row span:first-child { color: #333; }
+  .data-row span:last-child { font-weight: 600; }
+
+  .right-col {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .report-title {
+    grid-column: 1 / -1;
+    text-align: center;
+    font-size: 18px;
+    font-weight: 700;
+    font-family: 'Tahoma', 'Malgun Gothic', sans-serif;
+    color: #1f2430;
+    margin-bottom: 4px;
+  }
+
+  #reportCapture {
+    display: none;
+  }
+
+  .chart-wrap {
+    background: #ffffff;
+    border: 1px solid #000000;
+    border-radius: 0;
+    padding: 14px 16px 6px 16px;
+    font-family: 'Tahoma', 'Malgun Gothic', sans-serif;
+    height: 380px;
+    position: relative;
+  }
+  .chart-wrap canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+</style>
+</head>
+<body>
+
+<div class="card">
+  <div class="header"><span class="icon">📊</span> Process Capability Report (공정능력분석)</div>
+
+  <div class="field">
+    <label>리포트 제목</label>
+    <input type="text" id="reportTitle" placeholder="예: point 1의 공정능력">
+  </div>
+
+  <div class="input-grid">
+    <div class="field">
+      <label>하한 규격 (LSL)</label>
+      <input type="number" id="lsl" value="45" step="any">
+    </div>
+    <div class="field">
+      <label>상한 규격 (USL)</label>
+      <input type="number" id="usl" value="50" step="any">
+    </div>
+    <div class="field">
+      <label>막대(Bin) 너비 (비워두면 자동)</label>
+      <input type="number" id="binWidth" value="0.1" placeholder="예: 0.1" step="any">
+    </div>
+  </div>
+  <div class="hint" style="margin-top:-14px;">※ LSL 또는 USL 중 한쪽 칸을 비워두면 편측 규격(단측 검정)으로 계산됩니다.</div>
+
+  <div class="field">
+    <label>차트 종류</label>
+    <select id="chartType">
+      <option value="histogram">히스토그램 (분포)</option>
+      <option value="boxplot">박스플롯 (Box Plot)</option>
+    </select>
+  </div>
+
+  <div class="field">
+    <label>측정 데이터 (그룹별로 입력, 박스플롯 비교에 사용됩니다)</label>
+    <div id="groupsContainer">
+      <div class="group-row">
+        <div class="group-row-header">
+          <input type="text" class="group-name" value="Group 1" placeholder="그룹명 (예: DOE 1)">
+          <button type="button" class="remove-group-btn" onclick="this.closest('.group-row').remove()">삭제</button>
+        </div>
+        <textarea class="group-data">48.5 48.1 48.9 48.6 48.1 47.9 48.6 47.6 47.9 48.9 48.3 48.1 47.5 48.3 48.6 48.2 48.6 48.7 48.2 47.6</textarea>
+      </div>
+    </div>
+    <button type="button" class="add-group-btn" onclick="addGroup()">+ 그룹 추가</button>
+    <button type="button" class="reset-group-btn" onclick="resetGroups()">그룹 초기화</button>
+  </div>
+  <div class="hint">※ 줄바꿈(엔터), 탭, 띄어쓰기, 쉼표 모두 자동으로 인식합니다. 그룹을 여러 개 추가하면 박스플롯에서 함께 비교됩니다.</div>
+
+  <button class="analyze-btn" onclick="analyzeData()">분석 실행 (Analyze)</button>
+
+  <div class="save-toolbar" id="saveToolbar">
+    <button onclick="saveChartOnly()">그래프만 저장 (PNG)</button>
+    <button onclick="saveFullReport()">전체 리포트 저장 (PNG)</button>
+  </div>
+
+  <div id="reportCapture">
+    <div class="dashboard-grid" id="dashboardGrid">
+      <div class="report-title" id="reportTitleDisplay"></div>
+      <div class="data-box">
+        <div class="data-box-title">Process Data</div>
+        <div class="data-row"><span>LSL</span><span id="txtLSL">-</span></div>
+        <div class="data-row"><span>USL</span><span id="txtUSL">-</span></div>
+        <div class="data-row"><span>Sample Mean</span><span id="txtMean">-</span></div>
+        <div class="data-row"><span>Sample N</span><span id="txtN">-</span></div>
+        <div class="data-row"><span>StDev (Within)</span><span id="txtStd">-</span></div>
+        <div class="data-row"><span>StDev (Overall)</span><span id="txtStdOverall">-</span></div>
+      </div>
+
+      <div class="chart-wrap" id="chartWrap">
+        <canvas id="capChart"></canvas>
+      </div>
+
+      <div class="right-col">
+        <div class="data-box">
+          <div class="data-box-title">Potential (Within) Capability</div>
+          <div class="data-row"><span>Cp</span><span id="txtCp">-</span></div>
+          <div class="data-row"><span>CPL</span><span id="txtCpl">-</span></div>
+          <div class="data-row"><span>CPU</span><span id="txtCpu">-</span></div>
+          <div class="data-row"><span>Cpk</span><span id="txtCpk">-</span></div>
+          <div class="data-row"><span>CCpk</span><span id="txtCCpk">-</span></div>
+        </div>
+        <div class="data-box">
+          <div class="data-box-title">Overall Capability</div>
+          <div class="data-row"><span>Pp</span><span id="txtPp">-</span></div>
+          <div class="data-row"><span>PPL</span><span id="txtPpl">-</span></div>
+          <div class="data-row"><span>PPU</span><span id="txtPpu">-</span></div>
+          <div class="data-row"><span>Ppk</span><span id="txtPpk">-</span></div>
+          <div class="data-row"><span>Cpm</span><span id="txtCpm">-</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// 현재 그려진 차트 정보 (창 크기가 바뀌면 다시 그림)
+let chartState = null;
+let groupCounter = 1;
+
+const FONT = "Tahoma, 'Malgun Gothic', sans-serif";
+const SPEC_COLOR = '#c00000';
+const GRID_COLOR = '#dcdcdc';
+const PALETTE = ['#4472c4', '#ed7d31', '#a5a5a5', '#ffc000', '#70ad47', '#5b9bd5', '#c00000', '#7030a0'];
+
+const normalPdf = (x, mean, std) => (1 / (std * Math.sqrt(2 * Math.PI))) * Math.exp(-0.5 * Math.pow((x - mean) / std, 2));
+
+function parseData(raw) {
+  return raw.split(/[\n\t, ]+/).map(v => parseFloat(v.trim())).filter(v => !isNaN(v));
+}
+
+function addGroup() {
+  groupCounter++;
+  const container = document.getElementById('groupsContainer');
+  const row = document.createElement('div');
+  row.className = 'group-row';
+  row.innerHTML = `
+    <div class="group-row-header">
+      <input type="text" class="group-name" value="Group ${groupCounter}" placeholder="그룹명 (예: DOE ${groupCounter})">
+      <button type="button" class="remove-group-btn" onclick="this.closest('.group-row').remove()">삭제</button>
+    </div>
+    <textarea class="group-data" placeholder="측정 데이터 입력"></textarea>
+  `;
+  container.appendChild(row);
+}
+
+function resetGroups() {
+  if (!confirm('모든 그룹 데이터를 지우고 그룹 1개만 남기시겠습니까?')) return;
+  groupCounter = 1;
+  const container = document.getElementById('groupsContainer');
+  container.innerHTML = `
+    <div class="group-row">
+      <div class="group-row-header">
+        <input type="text" class="group-name" value="Group 1" placeholder="그룹명 (예: DOE 1)">
+        <button type="button" class="remove-group-btn" onclick="this.closest('.group-row').remove()">삭제</button>
+      </div>
+      <textarea class="group-data" placeholder="측정 데이터 입력"></textarea>
+    </div>
+  `;
+}
+
+function getGroups() {
+  const rows = document.querySelectorAll('#groupsContainer .group-row');
+  const groups = [];
+  rows.forEach((row, idx) => {
+    const nameInput = row.querySelector('.group-name').value.trim();
+    const data = parseData(row.querySelector('.group-data').value);
+    if (data.length > 0) {
+      groups.push({ name: nameInput || `Group ${idx + 1}`, data: data });
+    }
+  });
+  return groups;
+}
+
+const fmt = (v, d) => (v === null || !isFinite(v)) ? '*' : v.toFixed(d);
+
+function analyzeData() {
+  const lslRaw = document.getElementById('lsl').value.trim();
+  const uslRaw = document.getElementById('usl').value.trim();
+  const lsl = lslRaw === '' ? null : parseFloat(lslRaw);
+  const usl = uslRaw === '' ? null : parseFloat(uslRaw);
+  const binWidthInput = document.getElementById('binWidth').value;
+  const groups = getGroups();
+
+  if (lsl === null && usl === null) { alert('LSL 또는 USL 중 최소 하나는 입력해야 합니다.'); return; }
+  if ((lsl !== null && isNaN(lsl)) || (usl !== null && isNaN(usl))) { alert('LSL / USL 값이 올바른 숫자가 아닙니다.'); return; }
+  if (groups.length === 0) { alert('데이터가 없습니다. 최소 1개 그룹에 데이터를 입력해주세요.'); return; }
+
+  const data = groups.flatMap(g => g.data);
+  const n = data.length;
+
+  if (n < 2) { alert('데이터가 부족합니다.'); return; }
+
+  const mean = data.reduce((a, b) => a + b, 0) / n;
+  const variance = data.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / (n - 1);
+  const sampleStd = Math.sqrt(variance);
+  const c4 = (4 * (n - 1)) / (4 * n - 3);
+  const stdOverall = sampleStd / c4;
+
+  let mrSum = 0;
+  for (let i = 1; i < n; i++) {
+    mrSum += Math.abs(data[i] - data[i - 1]);
+  }
+  const mrAvg = mrSum / (n - 1);
+  const d2 = 1.128;
+  const stdWithin = mrAvg / d2;
+
+  let cp = null, cpu = null, cpl = null, cpk = null;
+  if (lsl !== null && usl !== null) cp = (usl - lsl) / (6 * stdWithin);
+  if (usl !== null) cpu = (usl - mean) / (3 * stdWithin);
+  if (lsl !== null) cpl = (mean - lsl) / (3 * stdWithin);
+  if (cpu !== null && cpl !== null) cpk = Math.min(cpu, cpl);
+  else if (cpu !== null) cpk = cpu;
+  else if (cpl !== null) cpk = cpl;
+
+  let pp = null, ppu = null, ppl = null, ppk = null;
+  if (lsl !== null && usl !== null) pp = (usl - lsl) / (6 * stdOverall);
+  if (usl !== null) ppu = (usl - mean) / (3 * stdOverall);
+  if (lsl !== null) ppl = (mean - lsl) / (3 * stdOverall);
+  if (ppu !== null && ppl !== null) ppk = Math.min(ppu, ppl);
+  else if (ppu !== null) ppk = ppu;
+  else if (ppl !== null) ppk = ppl;
+  const cpm = null;
+
+  document.getElementById('txtLSL').innerText = lsl !== null ? lsl : '*';
+  document.getElementById('txtUSL').innerText = usl !== null ? usl : '*';
+  document.getElementById('txtN').innerText = groups.length > 1 ? `${n} (${groups.length}개 그룹 합산)` : n;
+  document.getElementById('txtMean').innerText = fmt(mean, 4);
+  document.getElementById('txtStd').innerText = fmt(stdWithin, 5);
+  document.getElementById('txtStdOverall').innerText = fmt(stdOverall, 5);
+  document.getElementById('txtCp').innerText = fmt(cp, 3);
+  document.getElementById('txtCpl').innerText = fmt(cpl, 3);
+  document.getElementById('txtCpu').innerText = fmt(cpu, 3);
+  document.getElementById('txtCpk').innerText = fmt(cpk, 3);
+  document.getElementById('txtCCpk').innerText = cp !== null ? fmt(cp, 3) : fmt(cpk, 3);
+  document.getElementById('txtPp').innerText = fmt(pp, 3);
+  document.getElementById('txtPpl').innerText = fmt(ppl, 3);
+  document.getElementById('txtPpu').innerText = fmt(ppu, 3);
+  document.getElementById('txtPpk').innerText = fmt(ppk, 3);
+  document.getElementById('txtCpm').innerText = fmt(cpm, 3);
+
+  const titleInput = document.getElementById('reportTitle').value.trim();
+  document.getElementById('reportTitleDisplay').innerText = titleInput;
+  document.getElementById('reportTitleDisplay').style.display = titleInput ? 'block' : 'none';
+
+  document.getElementById('dashboardGrid').style.display = 'grid';
+  document.getElementById('reportCapture').style.display = 'block';
+  document.getElementById('saveToolbar').style.display = 'flex';
+
+  const binWidth = binWidthInput ? parseFloat(binWidthInput) : null;
+  const chartType = document.getElementById('chartType').value;
+  if (chartType === 'boxplot') {
+    chartState = buildBoxPlot(groups, lsl, usl);
+  } else {
+    chartState = buildHistogram(data, mean, stdWithin, lsl, usl, binWidth);
+  }
+  redrawChart();
+}
+
+// =====================================================================
+//  차트 데이터 계산
+// =====================================================================
+function buildHistogram(data, mean, std, lsl, usl, userBinWidth) {
+  const specValues = [];
+  if (lsl !== null) specValues.push(lsl);
+  if (usl !== null) specValues.push(usl);
+  const pad = std > 0 ? std * 1.5 : 0;
+  let minVal = Math.min(...data, ...specValues) - pad;
+  let maxVal = Math.max(...data, ...specValues) + pad;
+  if (!(maxVal > minVal)) { minVal -= 1; maxVal += 1; }
+
+  let binWidth = userBinWidth;
+  let binCount;
+  if (!binWidth || binWidth <= 0 || (maxVal - minVal) / binWidth > 2000) {
+    binCount = Math.max(7, Math.ceil(Math.sqrt(data.length)));
+    binWidth = (maxVal - minVal) / binCount;
+  } else {
+    binCount = Math.ceil((maxVal - minVal) / binWidth);
+  }
+
+  const frequencies = [];
+  for (let i = 0; i < binCount; i++) {
+    const start = minVal + i * binWidth;
+    const end = start + binWidth;
+    frequencies.push(data.filter(v => v >= start && v < end).length);
+  }
+
+  let curve = null;
+  if (std > 0) {
+    const curvePoints = 120;
+    const step = (maxVal - minVal) / (curvePoints - 1);
+    const scaleFactor = data.length * binWidth;
+    curve = [];
+    for (let i = 0; i < curvePoints; i++) {
+      const x = minVal + i * step;
+      curve.push({ x: x, y: scaleFactor * normalPdf(x, mean, std) });
+    }
+  }
+
+  return { kind: 'histogram', lsl, usl, minVal, maxVal, binWidth, frequencies, curve };
+}
+
+function percentile(sortedArr, p) {
+  const idx = (p / 100) * (sortedArr.length - 1);
+  const lo = Math.floor(idx);
+  const hi = Math.ceil(idx);
+  if (lo === hi) return sortedArr[lo];
+  return sortedArr[lo] + (sortedArr[hi] - sortedArr[lo]) * (idx - lo);
+}
+
+function hexToRgba(hex, alpha) {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
+function buildBoxPlot(groups, lsl, usl) {
+  const jitterHalf = 0.16;
+  const boxes = groups.map((g, idx) => {
+    const sorted = [...g.data].sort((a, b) => a - b);
+    const median = percentile(sorted, 50);
+    const q1 = percentile(sorted, 25);
+    const q3 = percentile(sorted, 75);
+    const iqr = q3 - q1;
+    const lowerFence = q1 - 1.5 * iqr;
+    const upperFence = q3 + 1.5 * iqr;
+    const withinLow = sorted.filter(v => v >= lowerFence);
+    const withinHigh = sorted.filter(v => v <= upperFence);
+    const centerX = idx + 0.5;
+    return {
+      name: g.name,
+      color: PALETTE[idx % PALETTE.length],
+      centerX, q1, q3, median,
+      whiskerLow: withinLow.length ? Math.min(...withinLow) : sorted[0],
+      whiskerHigh: withinHigh.length ? Math.max(...withinHigh) : sorted[sorted.length - 1],
+      // 지터는 분석 시 한 번만 계산 (다시 그려도 점이 움직이지 않도록)
+      points: g.data.map(v => ({ x: centerX + (Math.random() - 0.5) * jitterHalf * 2, y: v }))
+    };
+  });
+
+  const specValues = [];
+  if (lsl !== null) specValues.push(lsl);
+  if (usl !== null) specValues.push(usl);
+  const allValues = groups.flatMap(g => g.data);
+  const dataMin = Math.min(...allValues, ...specValues);
+  const dataMax = Math.max(...allValues, ...specValues);
+  const range = dataMax - dataMin || 1;
+
+  return { kind: 'boxplot', lsl, usl, boxes, yMin: dataMin - range * 0.1, yMax: dataMax + range * 0.1 };
+}
+
+// =====================================================================
+//  차트 그리기 (canvas 직접 그리기)
+// =====================================================================
+function redrawChart() {
+  if (!chartState) return;
+  const canvas = document.getElementById('capChart');
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  if (w === 0 || h === 0) return;
+  const dpr = Math.max(window.devicePixelRatio || 1, 2);
+  canvas.width = Math.round(w * dpr);
+  canvas.height = Math.round(h * dpr);
+  const ctx = canvas.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, w, h);
+  renderChart(ctx, w, h, chartState);
+}
+
+window.addEventListener('resize', redrawChart);
+
+function renderChart(ctx, w, h, s) {
+  if (s.kind === 'boxplot') renderBoxPlot(ctx, w, h, s);
+  else renderHistogram(ctx, w, h, s);
+}
+
+function niceStep(range, maxTicks) {
+  const rough = range / Math.max(1, maxTicks - 1);
+  const mag = Math.pow(10, Math.floor(Math.log10(rough)));
+  const norm = rough / mag;
+  const nice = norm < 1.5 ? 1 : norm < 3 ? 2 : norm < 7 ? 5 : 10;
+  return nice * mag;
+}
+
+function niceTicks(min, max, maxTicks) {
+  const ticks = [];
+  if (!(max > min)) return ticks;
+  const step = niceStep(max - min, maxTicks);
+  const start = Math.ceil(min / step - 1e-9) * step;
+  for (let v = start; v <= max + step * 1e-9; v += step) ticks.push(Math.round(v / step) * step);
+  return ticks;
+}
+
+function decimalsOf(step) {
+  for (let d = 0; d <= 8; d++) {
+    const scaled = step * Math.pow(10, d);
+    if (Math.abs(scaled - Math.round(scaled)) < 1e-6 * Math.max(1, scaled)) return d;
+  }
+  return 8;
+}
+
+const fmtTick = (v, d) => (Math.abs(v) < 1e-12 ? 0 : v).toFixed(d);
+
+// 오른쪽 정렬 범례 (넘치면 줄바꿈). 범례 아래쪽 y 좌표 반환
+function drawLegend(ctx, items, w) {
+  const box = 14, gapText = 6, gapItem = 12, rowH = 18;
+  ctx.font = `11px ${FONT}`;
+  const rows = [[]];
+  let rowW = 0;
+  items.forEach(it => {
+    const iw = box + gapText + ctx.measureText(it.text).width;
+    const cur = rows[rows.length - 1];
+    if (cur.length && rowW + gapItem + iw > w) { rows.push([]); rowW = 0; }
+    const row = rows[rows.length - 1];
+    if (row.length) rowW += gapItem;
+    row.push({ it, iw });
+    rowW += iw;
+  });
+
+  let y = 0;
+  rows.forEach(row => {
+    const total = row.reduce((a, p) => a + p.iw, 0) + gapItem * Math.max(0, row.length - 1);
+    let x = w - total;
+    row.forEach(({ it, iw }) => {
+      ctx.fillStyle = it.fill;
+      ctx.fillRect(x, y + 2, box, box);
+      ctx.strokeStyle = it.border;
+      ctx.lineWidth = it.borderWidth;
+      ctx.strokeRect(x, y + 2, box, box);
+      ctx.fillStyle = '#000000';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(it.text, x + box + gapText, y + rowH / 2);
+      x += iw + gapItem;
+    });
+    y += rowH;
+  });
+  return y;
+}
+
+function drawRotatedText(ctx, text, x, y) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(-Math.PI / 2);
+  ctx.font = `12px ${FONT}`;
+  ctx.fillStyle = '#000000';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, 0, 0);
+  ctx.restore();
+}
+
+function dashedLine(ctx, x1, y1, x2, y2) {
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(x1, y1);
+  ctx.lineTo(x2, y2);
+  ctx.lineWidth = 1.5;
+  ctx.strokeStyle = SPEC_COLOR;
+  ctx.setLineDash([5, 4]);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function renderHistogram(ctx, w, h, s) {
+  const legendBottom = drawLegend(ctx, [
+    { text: '데이터 빈도 (Histogram)', fill: '#bccde5', border: '#000000', borderWidth: 1 },
+    { text: '정규분포 (Normal Curve)', fill: 'rgba(128,0,0,0.15)', border: '#800000', borderWidth: 2 }
+  ], w);
+
+  // y축 (정수 눈금)
+  let yDataMax = s.frequencies.length ? Math.max(...s.frequencies) : 1;
+  if (s.curve) yDataMax = Math.max(yDataMax, ...s.curve.map(p => p.y));
+  if (!(yDataMax > 0)) yDataMax = 1;
+  const yStep = Math.max(1, Math.ceil(niceStep(yDataMax, 6)));
+  const yMax = Math.ceil(yDataMax / yStep) * yStep;
+  const yTicks = [];
+  for (let v = 0; v <= yMax + yStep * 1e-9; v += yStep) yTicks.push(v);
+
+  const xTicks = niceTicks(s.minVal, s.maxVal, Math.max(4, Math.floor(w / 55)));
+  const xDec = decimalsOf(xTicks.length > 1 ? xTicks[1] - xTicks[0] : 1);
+
+  ctx.font = `10px ${FONT}`;
+  const yTickW = Math.max(...yTicks.map(v => ctx.measureText(fmtTick(v, 0)).width));
+  const plot = { left: 18 + yTickW + 6, right: w - 4, top: legendBottom + 24, bottom: h - 40 };
+  const px = v => plot.left + (v - s.minVal) / (s.maxVal - s.minVal) * (plot.right - plot.left);
+  const py = v => plot.bottom - v / yMax * (plot.bottom - plot.top);
+
+  // 그리드 + 눈금
+  ctx.lineWidth = 1;
+  ctx.strokeStyle = GRID_COLOR;
+  ctx.fillStyle = '#000000';
+  ctx.font = `10px ${FONT}`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+  xTicks.forEach(v => {
+    const x = px(v);
+    ctx.beginPath(); ctx.moveTo(x, plot.top); ctx.lineTo(x, plot.bottom); ctx.stroke();
+    ctx.fillText(fmtTick(v, xDec), x, plot.bottom + 4);
+  });
+  ctx.textAlign = 'right';
+  ctx.textBaseline = 'middle';
+  yTicks.forEach(v => {
+    const y = py(v);
+    ctx.beginPath(); ctx.moveTo(plot.left, y); ctx.lineTo(plot.right, y); ctx.stroke();
+    ctx.fillText(fmtTick(v, 0), plot.left - 4, y);
+  });
+  ctx.font = `12px ${FONT}`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+  ctx.fillText('측정값 (Value)', (plot.left + plot.right) / 2, plot.bottom + 20);
+  drawRotatedText(ctx, '빈도수 (Frequency)', 8, (plot.top + plot.bottom) / 2);
+
+  // 막대 + 곡선 (그래프 영역 밖은 잘라냄)
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(plot.left, plot.top, plot.right - plot.left, plot.bottom - plot.top);
+  ctx.clip();
+  ctx.fillStyle = '#bccde5';
+  ctx.strokeStyle = '#000000';
+  ctx.lineWidth = 1;
+  s.frequencies.forEach((f, i) => {
+    if (f === 0) return;
+    const start = s.minVal + i * s.binWidth;
+    const x1 = px(start), x2 = px(start + s.binWidth), y1 = py(f);
+    ctx.fillRect(x1, y1, x2 - x1, plot.bottom - y1);
+    ctx.strokeRect(x1, y1, x2 - x1, plot.bottom - y1);
+  });
+  if (s.curve) {
+    ctx.beginPath();
+    s.curve.forEach((p, i) => i === 0 ? ctx.moveTo(px(p.x), py(p.y)) : ctx.lineTo(px(p.x), py(p.y)));
+    ctx.strokeStyle = '#800000';
+    ctx.lineWidth = 2;
+    ctx.lineJoin = 'round';
+    ctx.stroke();
+  }
+  ctx.restore();
+
+  // 축선
+  ctx.strokeStyle = '#000000';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(plot.left, plot.top); ctx.lineTo(plot.left, plot.bottom); ctx.lineTo(plot.right, plot.bottom);
+  ctx.stroke();
+
+  // LSL / USL 세로 점선
+  const spec = (val, label) => {
+    const x = px(val);
+    if (x < plot.left - 0.5 || x > plot.right + 0.5) return;
+    dashedLine(ctx, x, plot.top, x, plot.bottom);
+    ctx.font = `bold 12px ${FONT}`;
+    ctx.fillStyle = SPEC_COLOR;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'bottom';
+    ctx.fillText(label, x, plot.top - 4);
+  };
+  if (s.lsl !== null) spec(s.lsl, 'LSL');
+  if (s.usl !== null) spec(s.usl, 'USL');
+}
+
+function renderBoxPlot(ctx, w, h, s) {
+  const legendBottom = drawLegend(ctx, s.boxes.map(b => ({ text: b.name, fill: b.color, border: b.color, borderWidth: 1 })), w);
+  const nGroups = s.boxes.length;
+
+  const yTicks = niceTicks(s.yMin, s.yMax, Math.max(4, Math.floor(h / 45)));
+  const yDec = decimalsOf(yTicks.length > 1 ? yTicks[1] - yTicks[0] : 1);
+  ctx.font = `10px ${FONT}`;
+  const yTickW = yTicks.length ? Math.max(...yTicks.map(v => ctx.measureText(fmtTick(v, yDec)).width)) : 20;
+  const plot = { left: 28 + yTickW + 6, right: w - 40, top: legendBottom + 12, bottom: h - 10 };
+  const px = v => plot.left + v / nGroups * (plot.right - plot.left);
+  const py = v => plot.bottom - (v - s.yMin) / (s.yMax - s.yMin) * (plot.bottom - plot.top);
+
+  ctx.lineWidth = 1;
+  ctx.strokeStyle = GRID_COLOR;
+  ctx.fillStyle = '#000000';
+  ctx.textAlign = 'right';
+  ctx.textBaseline = 'middle';
+  yTicks.forEach(v => {
+    const y = py(v);
+    ctx.beginPath(); ctx.moveTo(plot.left, y); ctx.lineTo(plot.right, y); ctx.stroke();
+    ctx.fillText(fmtTick(v, yDec), plot.left - 4, y);
+  });
+  ctx.strokeStyle = '#000000';
+  ctx.beginPath(); ctx.moveTo(plot.left, plot.top); ctx.lineTo(plot.left, plot.bottom); ctx.stroke();
+  drawRotatedText(ctx, '측정값 (Value)', 18, (plot.top + plot.bottom) / 2);
+
+  // 개별 데이터 점 (지터)
+  s.boxes.forEach(b => {
+    ctx.fillStyle = b.color;
+    b.points.forEach(p => {
+      ctx.beginPath();
+      ctx.arc(px(p.x), py(p.y), 4, 0, Math.PI * 2);
+      ctx.fill();
+    });
+  });
+
+  // 박스 + 수염
+  s.boxes.forEach(b => {
+    const xc = px(b.centerX);
+    const boxHalf = px(b.centerX + 0.3) - xc;
+    const capHalf = boxHalf * 0.55;
+    const yQ1 = py(b.q1), yQ3 = py(b.q3), yMed = py(b.median);
+    const yWLow = py(b.whiskerLow), yWHigh = py(b.whiskerHigh);
+
+    ctx.save();
+    ctx.strokeStyle = b.color;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(xc, yQ3); ctx.lineTo(xc, yWHigh);
+    ctx.moveTo(xc, yQ1); ctx.lineTo(xc, yWLow);
+    ctx.moveTo(xc - capHalf, yWHigh); ctx.lineTo(xc + capHalf, yWHigh);
+    ctx.moveTo(xc - capHalf, yWLow); ctx.lineTo(xc + capHalf, yWLow);
+    ctx.stroke();
+
+    ctx.fillStyle = hexToRgba(b.color, 0.25);
+    ctx.fillRect(xc - boxHalf, yQ3, boxHalf * 2, yQ1 - yQ3);
+    ctx.strokeRect(xc - boxHalf, yQ3, boxHalf * 2, yQ1 - yQ3);
+
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(xc - boxHalf, yMed); ctx.lineTo(xc + boxHalf, yMed);
+    ctx.stroke();
+    ctx.restore();
+  });
+
+  // LSL / USL 가로 점선
+  const spec = (val, label) => {
+    const y = py(val);
+    if (y < plot.top - 0.5 || y > plot.bottom + 0.5) return;
+    dashedLine(ctx, plot.left, y, plot.right, y);
+    ctx.font = `bold 11px ${FONT}`;
+    ctx.fillStyle = SPEC_COLOR;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(label, plot.right + 4, y);
+  };
+  if (s.lsl !== null) spec(s.lsl, 'LSL');
+  if (s.usl !== null) spec(s.usl, 'USL');
+}
+
+// =====================================================================
+//  PNG 저장 (외부 라이브러리 없이 canvas로 직접 합성)
+// =====================================================================
+function timestampSuffix() {
+  const d = new Date();
+  const pad = (v) => String(v).padStart(2, '0');
+  return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
+}
+
+function downloadCanvas(canvas, filename) {
+  // IE/구형 Edge 대응
+  if (canvas.msToBlob && window.navigator.msSaveBlob) {
+    window.navigator.msSaveBlob(canvas.msToBlob(), filename);
+    return;
+  }
+  const link = document.createElement('a');
+  link.href = canvas.toDataURL('image/png');
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
+
+function saveChartOnly() {
+  if (!chartState) { alert('먼저 분석을 실행해주세요.'); return; }
+  const src = document.getElementById('capChart');
+  const out = document.createElement('canvas');
+  out.width = src.width;
+  out.height = src.height;
+  const ctx = out.getContext('2d');
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, out.width, out.height);
+  ctx.drawImage(src, 0, 0);
+  downloadCanvas(out, `capability_chart_${timestampSuffix()}.png`);
+}
+
+function saveFullReport() {
+  if (!chartState) { alert('먼저 분석을 실행해주세요.'); return; }
+  try {
+    const grid = document.getElementById('dashboardGrid');
+    const base = grid.getBoundingClientRect();
+    const scale = 2;
+    const out = document.createElement('canvas');
+    out.width = Math.round(base.width * scale);
+    out.height = Math.round(base.height * scale);
+    const ctx = out.getContext('2d');
+    ctx.scale(scale, scale);
+    const rel = el => {
+      const r = el.getBoundingClientRect();
+      return { x: r.left - base.left, y: r.top - base.top, w: r.width, h: r.height };
+    };
+
+    // 화면과 같은 위치/폭으로 글자 그리기 (화면에서 줄바꿈된 글자는 똑같이 줄바꿈)
+    const drawTextIn = (ctx, el, font, color, align) => {
+      const r = rel(el);
+      ctx.font = font;
+      ctx.fillStyle = color;
+      ctx.textAlign = align;
+      ctx.textBaseline = 'top';
+      const lines = [];
+      el.innerText.split(' ').forEach(word => {
+        const last = lines.length ? lines[lines.length - 1] : null;
+        if (last !== null && ctx.measureText(last + ' ' + word).width <= r.w + 1) lines[lines.length - 1] = last + ' ' + word;
+        else lines.push(word);
+      });
+      const lineH = lines.length > 1 ? r.h / lines.length : 0;
+      const x = align === 'center' ? r.x + r.w / 2 : align === 'right' ? r.x + r.w : r.x;
+      const offset = lines.length > 1 ? (lineH - 12) / 2 : (r.h - 12) / 2;
+      lines.forEach((line, i) => ctx.fillText(line, x, r.y + i * lineH + offset));
+    };
+
+    // 배경
+    ctx.fillStyle = '#e8e8e8';
+    ctx.fillRect(0, 0, base.width, base.height);
+    ctx.strokeStyle = '#cfd2d8';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(0.5, 0.5, base.width - 1, base.height - 1);
+
+    // 제목
+    const titleEl = document.getElementById('reportTitleDisplay');
+    if (titleEl.style.display !== 'none' && titleEl.innerText) {
+      const r = rel(titleEl);
+      ctx.font = `bold 18px ${FONT}`;
+      ctx.fillStyle = '#1f2430';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(titleEl.innerText, r.x + r.w / 2, r.y + r.h / 2);
+    }
+
+    // 데이터 박스
+    grid.querySelectorAll('.data-box').forEach(boxEl => {
+      const r = rel(boxEl);
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(r.x, r.y, r.w, r.h);
+      ctx.strokeStyle = '#000000';
+      ctx.strokeRect(r.x + 0.5, r.y + 0.5, r.w - 1, r.h - 1);
+
+      const t = boxEl.querySelector('.data-box-title');
+      const tr = rel(t);
+      drawTextIn(ctx, t, `bold 12px ${FONT}`, '#000000', 'center');
+      ctx.strokeStyle = '#cccccc';
+      ctx.beginPath();
+      ctx.moveTo(tr.x, tr.y + tr.h - 0.5);
+      ctx.lineTo(tr.x + tr.w, tr.y + tr.h - 0.5);
+      ctx.stroke();
+
+      boxEl.querySelectorAll('.data-row').forEach(row => {
+        const spans = row.querySelectorAll('span');
+        drawTextIn(ctx, spans[0], `12px ${FONT}`, '#333333', 'left');
+        drawTextIn(ctx, spans[1], `bold 12px ${FONT}`, '#000000', 'right');
+      });
+    });
+
+    // 차트
+    const wrap = document.getElementById('chartWrap');
+    const wr = rel(wrap);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(wr.x, wr.y, wr.w, wr.h);
+    ctx.strokeStyle = '#000000';
+    ctx.strokeRect(wr.x + 0.5, wr.y + 0.5, wr.w - 1, wr.h - 1);
+    const cr = rel(document.getElementById('capChart'));
+    ctx.drawImage(document.getElementById('capChart'), cr.x, cr.y, cr.w, cr.h);
+
+    downloadCanvas(out, `capability_report_${timestampSuffix()}.png`);
+  } catch (err) {
+    console.error(err);
+    alert('리포트 저장 중 오류가 발생했습니다.');
+  }
+}
+</script>
+
+</body>
+</html>

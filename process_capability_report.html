@@ -66,13 +66,6 @@
     font-size: 12px; font-weight: 600; color: #1f2430; cursor: pointer;
   }
   .sheet-toolbar button:hover { background: #f0f3f9; border-color: #1d4ed8; color: #1d4ed8; }
-  .xlsx-panel {
-    display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; font-size: 13px;
-    border: 1px solid #86efac; background: #f0fdf4; border-radius: 6px; padding: 8px 12px; margin-bottom: 6px;
-  }
-  .xlsx-panel select, .xlsx-panel input { border: 1px solid #c9cdd6; border-radius: 5px; padding: 4px 8px; font-size: 13px; font-family: inherit; }
-  .xlsx-panel button { background: #ffffff; border: 1px solid #c9cdd6; border-radius: 5px; padding: 4px 10px; font-size: 12px; font-weight: 600; cursor: pointer; }
-  .xlsx-panel button.xlsx-go { background: #16a34a; border-color: #16a34a; color: #ffffff; }
   .sheet-wrap {
     max-height: 360px;
     overflow: auto;
@@ -406,23 +399,13 @@
       <button type="button" onclick="addSheetRows()">+ 10행</button>
       <button type="button" onclick="addSheetColumn()">+ 1열</button>
       <button type="button" onclick="clearSheet()">워크시트 비우기</button>
-      <button type="button" onclick="document.getElementById('xlsxFile').click()" style="margin-left:auto; border-color:#86efac; background:#ecfdf5; color:#166534;">엑셀 파일에서 가져오기 (소수점 그대로)</button>
-      <input type="file" id="xlsxFile" accept=".xlsx,.xlsm" style="display:none" onchange="if (this.files[0]) openXlsx(this.files[0]); this.value='';">
-    </div>
-    <div class="xlsx-panel" id="xlsxPanel" style="display:none;">
-      <b id="xlsxFileName"></b>
-      <span>시트 <select id="xlsxSheet"></select></span>
-      <span>범위 <input type="text" id="xlsxRange" placeholder="예: G6:I26" style="width:110px;"></span>
-      <button type="button" class="xlsx-go" onclick="importXlsxRange()">가져오기</button>
-      <button type="button" onclick="document.getElementById('xlsxPanel').style.display='none'">닫기</button>
-      <span style="color:#6b7280; font-size:12px; flex-basis:100%;">※ 첫 행을 머리글(1086Y 등)로 포함하면 열 이름이 됩니다. 워크시트 내용은 가져온 값으로 바뀝니다.</span>
     </div>
     <div class="sheet-wrap"><table class="sheet" id="sheet"></table></div>
   </div>
   <div class="hint" id="pasteNotice" style="display:none; color:#b45309; font-weight:600; margin-bottom:4px;"></div>
   <div class="hint">※ 셀을 클릭한 뒤 엑셀이나 Minitab에서 복사한 범위를 붙여넣으면 그 위치부터 채워집니다. 첫 줄이 글자(예: 1086Y)면 열 이름으로 들어갑니다.<br>
-  ※ 엑셀 화면에 반올림돼 보이는 값도 셀에 저장된 실제 값(소수점 포함)으로 들어갑니다. 붙여넣기 후 안내 문구로 확인할 수 있습니다.<br>
-  ※ 소수점이 빠진다면 [엑셀 파일에서 가져오기]로 파일과 범위(예: G6:I26)를 지정하세요. 셀에 저장된 값을 그대로 읽습니다. 빈칸이나 * 는 결측값입니다.</div>
+  ※ 엑셀에서 Ctrl+C → 여기서 Ctrl+V 하면, 화면에 정수로 보이는 셀도 수식 입력줄의 실제 값(소수점 포함)으로 들어갑니다. 붙여넣은 뒤 안내 문구로 확인할 수 있습니다.<br>
+  ※ 빈칸이나 * 는 결측값으로 처리됩니다.</div>
 
   <div class="mt-dialog">
     <div class="mt-dialog-title">공정 능력 분석 (정규 분포) - 데이터 배열 형식</div>
@@ -885,138 +868,10 @@ function onSheetPaste(e) {
       ? `엑셀 화면에 반올림돼 보이던 셀 ${diff}개를 실제 저장값(소수점 포함)으로 입력했습니다.`
       : '엑셀의 실제 저장값으로 입력했습니다. (화면 표시값과 다른 셀 없음)');
   } else if (source === 'html') {
-    msg.push('엑셀의 실제 저장값 정보를 찾지 못해 화면에 보이는 값으로 입력했습니다. 소수점까지 필요하면 [엑셀 파일에서 가져오기]를 사용하세요.');
+    msg.push('엑셀의 실제 저장값 정보를 찾지 못해 화면에 보이는 값으로 입력했습니다. 엑셀에서 해당 셀 서식을 [일반]으로 바꾼 뒤 다시 복사해 보세요.');
     warn = true;
   }
   showSheetNotice(msg, warn);
-}
-
-// =====================================================================
-//  엑셀 파일(.xlsx / .xlsm)에서 직접 가져오기 - 셀에 저장된 값을 그대로 읽음
-//  (외부 라이브러리 없이 압축 해제: 브라우저 내장 DecompressionStream 사용)
-// =====================================================================
-let xlsxBook = null; // { sheets: [{ name, path }], buf, entries, shared }
-
-function zipEntries(buf) {
-  const dv = new DataView(buf);
-  let eocd = -1;
-  for (let i = buf.byteLength - 22; i >= Math.max(0, buf.byteLength - 65557); i--) {
-    if (dv.getUint32(i, true) === 0x06054b50) { eocd = i; break; }
-  }
-  if (eocd < 0) throw new Error('엑셀(.xlsx) 파일 형식이 아닙니다.');
-  const count = dv.getUint16(eocd + 10, true);
-  let off = dv.getUint32(eocd + 16, true);
-  const dec = new TextDecoder();
-  const entries = {};
-  for (let k = 0; k < count; k++) {
-    if (dv.getUint32(off, true) !== 0x02014b50) break;
-    const method = dv.getUint16(off + 10, true);
-    const compSize = dv.getUint32(off + 20, true);
-    const nameLen = dv.getUint16(off + 28, true);
-    const extraLen = dv.getUint16(off + 30, true);
-    const commentLen = dv.getUint16(off + 32, true);
-    const localOff = dv.getUint32(off + 42, true);
-    const name = dec.decode(new Uint8Array(buf, off + 46, nameLen));
-    entries[name] = { method, compSize, localOff };
-    off += 46 + nameLen + extraLen + commentLen;
-  }
-  return entries;
-}
-
-async function zipText(buf, entries, name) {
-  const e = entries[name];
-  if (!e) return null;
-  const dv = new DataView(buf);
-  const start = e.localOff + 30 + dv.getUint16(e.localOff + 26, true) + dv.getUint16(e.localOff + 28, true);
-  const data = new Uint8Array(buf, start, e.compSize);
-  if (e.method === 0) return new TextDecoder().decode(data);
-  if (e.method !== 8) throw new Error('지원하지 않는 압축 방식입니다.');
-  const stream = new Blob([data]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
-  return await new Response(stream).text();
-}
-
-const xmlDoc = text => new DOMParser().parseFromString(text, 'application/xml');
-const xmlAll = (node, tag) => Array.from(node.getElementsByTagNameNS('*', tag));
-
-async function openXlsx(file) {
-  if (typeof DecompressionStream !== 'function') {
-    alert('이 브라우저는 엑셀 파일 읽기를 지원하지 않습니다. 최신 Chrome 또는 Edge 를 사용해주세요.');
-    return;
-  }
-  try {
-    const buf = await file.arrayBuffer();
-    const entries = zipEntries(buf);
-    const wb = xmlDoc(await zipText(buf, entries, 'xl/workbook.xml'));
-    const rels = xmlDoc(await zipText(buf, entries, 'xl/_rels/workbook.xml.rels'));
-    const target = {};
-    xmlAll(rels, 'Relationship').forEach(r => { target[r.getAttribute('Id')] = r.getAttribute('Target'); });
-    const sheets = xmlAll(wb, 'sheet').map(s => {
-      const rid = s.getAttribute('r:id') || s.getAttributeNS('http://schemas.openxmlformats.org/officeDocument/2006/relationships', 'id');
-      let path = target[rid] || '';
-      path = path.startsWith('/') ? path.slice(1) : 'xl/' + path.replace(/^\.\//, '');
-      return { name: s.getAttribute('name'), path };
-    });
-    let shared = [];
-    const sst = await zipText(buf, entries, 'xl/sharedStrings.xml');
-    if (sst) shared = xmlAll(xmlDoc(sst), 'si').map(si => xmlAll(si, 't').map(t => t.textContent).join(''));
-    xlsxBook = { buf, entries, sheets, shared, fileName: file.name };
-
-    const sel = document.getElementById('xlsxSheet');
-    sel.innerHTML = sheets.map((s, i) => `<option value="${i}">${escapeHtml(s.name)}</option>`).join('');
-    let saved = {};
-    try { saved = JSON.parse(localStorage.getItem('capability-xlsx') || '{}'); } catch (e) {}
-    const idx = sheets.findIndex(s => s.name === saved.sheet);
-    if (idx >= 0) sel.value = String(idx);
-    if (saved.range) document.getElementById('xlsxRange').value = saved.range;
-    document.getElementById('xlsxFileName').innerText = file.name;
-    document.getElementById('xlsxPanel').style.display = 'flex';
-  } catch (e) {
-    console.error(e);
-    alert('엑셀 파일을 읽지 못했습니다.\n' + e.message + '\n\n.xlsx / .xlsm 파일만 지원합니다. (.xls 는 엑셀에서 .xlsx 로 다시 저장해주세요)');
-  }
-}
-
-function colIndex(letters) {
-  let n = 0;
-  for (const ch of letters.toUpperCase()) n = n * 26 + (ch.charCodeAt(0) - 64);
-  return n - 1;
-}
-
-async function importXlsxRange() {
-  if (!xlsxBook) return;
-  const rangeText = document.getElementById('xlsxRange').value.trim().toUpperCase().replace(/\$/g, '');
-  const m = /^([A-Z]+)(\d+):([A-Z]+)(\d+)$/.exec(rangeText);
-  if (!m) { alert('범위를 G6:I26 처럼 입력해주세요. (첫 행이 1086Y 같은 머리글이면 열 이름으로 들어갑니다)'); return; }
-  const c1 = colIndex(m[1]), r1 = parseInt(m[2], 10), c2 = colIndex(m[3]), r2 = parseInt(m[4], 10);
-  if (c2 < c1 || r2 < r1) { alert('범위의 시작과 끝을 확인해주세요.'); return; }
-
-  try {
-    const sheet = xlsxBook.sheets[parseInt(document.getElementById('xlsxSheet').value, 10)];
-    const doc = xmlDoc(await zipText(xlsxBook.buf, xlsxBook.entries, sheet.path));
-    const rows = Array.from({ length: r2 - r1 + 1 }, () => Array(c2 - c1 + 1).fill(''));
-    xmlAll(doc, 'c').forEach(c => {
-      const ref = /^([A-Z]+)(\d+)$/.exec(c.getAttribute('r') || '');
-      if (!ref) return;
-      const col = colIndex(ref[1]), row = parseInt(ref[2], 10);
-      if (col < c1 || col > c2 || row < r1 || row > r2) return;
-      const type = c.getAttribute('t');
-      const v = xmlAll(c, 'v')[0];
-      let value = v ? v.textContent : '';
-      if (type === 's') value = xlsxBook.shared[parseInt(value, 10)] || '';
-      else if (type === 'inlineStr') value = xmlAll(c, 't').map(t => t.textContent).join('');
-      else if (type === 'e') value = '';           // #N/A 등 오류 → 결측
-      rows[row - r1][col - c1] = value.trim();
-    });
-
-    try { localStorage.setItem('capability-xlsx', JSON.stringify({ sheet: sheet.name, range: rangeText })); } catch (e) {}
-    initSheet();
-    const { count, width } = placeMatrix(rows, -1, 0);
-    showSheetNotice([`※ 엑셀 파일 '${xlsxBook.fileName}' [${sheet.name}] ${rangeText} 에서 ${count}행 × ${width}열을 셀의 실제 값(소수점 포함) 그대로 가져왔습니다.`]);
-    document.getElementById('xlsxPanel').style.display = 'none';
-  } catch (e) {
-    console.error(e);
-    alert('범위를 가져오지 못했습니다.\n' + e.message);
-  }
 }
 
 function setupSheet() {

@@ -376,19 +376,19 @@
   <div class="input-grid four">
     <div class="field">
       <label>하한 규격 (LSL)</label>
-      <input type="number" id="lsl" value="45" step="any">
+      <input type="number" id="lsl" value="3475" step="any">
     </div>
     <div class="field">
       <label>목표값 (Target, 선택)</label>
-      <input type="number" id="target" placeholder="비워두면 *" step="any">
+      <input type="number" id="target" value="3510" placeholder="비워두면 *" step="any">
     </div>
     <div class="field">
       <label>상한 규격 (USL)</label>
-      <input type="number" id="usl" value="50" step="any">
+      <input type="number" id="usl" value="3545" step="any">
     </div>
     <div class="field">
       <label>막대(Bin) 너비 (비워두면 자동)</label>
-      <input type="number" id="binWidth" value="0.1" placeholder="예: 0.1" step="any">
+      <input type="number" id="binWidth" value="1" placeholder="예: 0.1" step="any">
     </div>
   </div>
   <div class="hint" style="margin-top:-14px;">※ LSL 또는 USL 중 한쪽 칸을 비워두면 편측 규격(단측 검정)으로 계산됩니다. 목표값을 넣으면 Cpm이 계산됩니다.</div>
@@ -540,7 +540,12 @@ const fmt = (v, d) => (v === null || v === undefined || !isFinite(v)) ? '*' : v.
 const fmtSig = v => (v === null || v === undefined || !isFinite(v)) ? '*' : String(Number(v.toPrecision(6)));
 
 const SHEET_MIN_COLS = 8, SHEET_MIN_ROWS = 30;
-const SAMPLE_DATA = '48.5 48.1 48.9 48.6 48.1 47.9 48.6 47.6 47.9 48.9 48.3 48.1 47.5 48.3 48.6 48.2 48.6 48.7 48.2 47.6';
+// 시작할 때 워크시트에 들어 있는 기본 데이터 (1086Y ~ 1088Y, 부분군 행 위치)
+const DEFAULT_SHEET = [
+  { name: '1086Y', values: '3517.105671 3517.150763 3517.941296 3517.557575 3517.461834 3517.936925 3517.197092 3518.217944 3516.936165 3517.618177 3517.564071 3517.749445 3517.221786 3516.568816 3516.371313 3517.202228 3517.170218 3516.898501 3516.378622 3515.586687' },
+  { name: '1087Y', values: '3516.560777 3517.092159 3517.235307 3517.792985 3517.416842 3519.153381 3517.452653 3516.101776 3517.441207 3518.912845 3520.279514 3519.693789 3519.176838 3518.857802 3518.087824 3517.451296 3519.640582 3519.020311 3518.702585 3518.990758' },
+  { name: '1088Y', values: '3518.878179 3515.956995 3518.224324 3517.971027 3518.330953 3518.130666 3517.875404 3517.858869 3518.478172 3518.923563 3518.284153 3517.42057 3518.526117 3517.84611 3518.915995 3518.191408 3517.377414 3517.233281 3516.774527 3516.875115' }
+];
 let nameInputs = [];   // 열 이름 칸
 let cellInputs = [];   // cellInputs[행][열]
 
@@ -882,10 +887,15 @@ function setupSheet() {
   t.addEventListener('change', refreshColumnPickers);
   document.querySelectorAll('input[name="layout"]').forEach(i => i.addEventListener('change', updateLayoutUi));
   document.getElementById('subgroupSize').addEventListener('input', updateLayoutUi);
-  // 예제 데이터
-  nameInputs[0].value = 'Sample';
-  SAMPLE_DATA.split(' ').forEach((v, i) => { cellInputs[i][0].value = v; });
+  // 기본 데이터: C1~C3 에 1086Y~1088Y, "부분군 행 위치"로 C1~C3 선택
+  DEFAULT_SHEET.forEach((col, c) => {
+    nameInputs[c].value = col.name;
+    col.values.split(' ').forEach((v, i) => { cellInputs[i][c].value = v; });
+  });
   refreshColumnPickers();
+  document.querySelector('input[name="layout"][value="rows"]').checked = true;
+  document.querySelectorAll('#rowCols input').forEach(i => { i.checked = parseInt(i.value, 10) < DEFAULT_SHEET.length; });
+  updateLayoutUi();
 }
 
 // =====================================================================

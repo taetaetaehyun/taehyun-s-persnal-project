@@ -92,6 +92,11 @@
   table.sheet input.cell { text-align: right; font-variant-numeric: tabular-nums; }
   table.sheet input.name-cell { text-align: center; font-weight: 700; }
   table.sheet input:focus { box-shadow: inset 0 0 0 2px #1d4ed8; background: #ffffff; }
+  table.sheet td.sel, table.sheet th.sel { background: #dbe6ff; }
+  table.sheet td.sel input, table.sheet th.sel input { background: transparent; }
+  table.sheet { user-select: none; }
+  table.sheet input { user-select: text; }
+  table.sheet thead tr:first-child th:not(.corner), table.sheet tbody th { cursor: pointer; }
 
   /* Minitab 대화상자 */
   .mt-dialog {
@@ -370,7 +375,7 @@
 
   <div class="field">
     <label>리포트 제목</label>
-    <input type="text" id="reportTitle" placeholder="예: point 1의 공정능력">
+    <input type="text" id="reportTitle" value="P-127-K" placeholder="예: point 1의 공정능력">
   </div>
 
   <div class="input-grid four">
@@ -565,6 +570,7 @@ function initSheet() {
   t.innerHTML = '<thead><tr><th class="corner"></th></tr><tr class="name-row"><th class="corner">↓</th></tr></thead><tbody></tbody>';
   nameInputs = [];
   cellInputs = [];
+  if (typeof clearSelectionMarks === 'function') clearSelectionMarks();
   ensureSheetSize(SHEET_MIN_ROWS, SHEET_MIN_COLS);
 }
 
@@ -767,10 +773,133 @@ function getAnalysisInput() {
 }
 
 // ---------- 키보드 이동 (Enter / ↑ / ↓, 셀 끝에서 ← →) ----------
+// ---------- 범위 선택 (드래그 / Shift+클릭 / Shift+방향키 / 열·행 머리 클릭) ----------
+// 선택 범위는 Ctrl+C 복사, Ctrl+X 잘라내기, Delete 지우기, Ctrl+V 붙여넣기(왼쪽 위 기준)에 사용
+let sel = null;          // { ar, ac, fr, fc } 시작(anchor) / 끝(focus) 셀, 행 -1 = 열 이름 칸
+let selMarked = [];      // 강조 표시한 칸
+let selDragging = false;
+
+function sheetInput(r, c) { return r === -1 ? nameInputs[c] : cellInputs[r][c]; }
+
+function selRange() {
+  if (!sel) return null;
+  return { r1: Math.min(sel.ar, sel.fr), r2: Math.max(sel.ar, sel.fr), c1: Math.min(sel.ac, sel.fc), c2: Math.max(sel.ac, sel.fc) };
+}
+
+function selIsMulti() {
+  const g = selRange();
+  return !!g && (g.r1 !== g.r2 || g.c1 !== g.c2);
+}
+
+function setSelection(ar, ac, fr, fc) {
+  sel = { ar, ac, fr, fc };
+  selMarked.forEach(el => el.classList.remove('sel'));
+  selMarked = [];
+  if (!selIsMulti()) return;
+  const g = selRange();
+  for (let r = g.r1; r <= g.r2; r++) {
+    for (let c = g.c1; c <= g.c2; c++) {
+      const cell = sheetInput(r, c).parentElement;
+      cell.classList.add('sel');
+      selMarked.push(cell);
+    }
+  }
+}
+
+function clearSelectionMarks() {
+  selMarked.forEach(el => el.classList.remove('sel'));
+  selMarked = [];
+  sel = null;
+}
+
+// 열에서 값이 있는 마지막 행
+function lastUsedRow(c) {
+  for (let r = cellInputs.length - 1; r >= 0; r--) if (cellInputs[r][c].value.trim() !== '') return r;
+  return 0;
+}
+
+function onSheetMouseDown(e) {
+  if (e.button !== 0) return;
+  const t = e.target;
+  const head = t.closest('th');
+  // 열 머리(C1, C2 …) 클릭 → 열 전체 선택 (Shift = 여러 열)
+  if (head && head.parentElement === document.getElementById('sheet').tHead.rows[0] && head.cellIndex > 0) {
+    e.preventDefault();
+    const c = head.cellIndex - 1;
+    const ac = e.shiftKey && sel ? sel.ac : c;
+    let last = 0;
+    for (let k = Math.min(ac, c); k <= Math.max(ac, c); k++) last = Math.max(last, lastUsedRow(k));
+    nameInputs[ac].focus();
+    setSelection(-1, ac, last, c);
+    return;
+  }
+  // 행 번호 클릭 → 행 전체 선택 (Shift = 여러 행)
+  if (head && head.parentElement.parentElement.tagName === 'TBODY') {
+    e.preventDefault();
+    const r = head.parentElement.sectionRowIndex;
+    const ar = e.shiftKey && sel ? sel.ar : r;
+    cellInputs[ar][0].focus();
+    setSelection(ar, 0, r, nameInputs.length - 1);
+    return;
+  }
+  if (t.dataset.r === undefined) return;
+  const r = parseInt(t.dataset.r, 10), c = parseInt(t.dataset.c, 10);
+  if (e.shiftKey && sel) {
+    e.preventDefault();
+    setSelection(sel.ar, sel.ac, r, c);
+    return;
+  }
+  setSelection(r, c, r, c);
+  selDragging = true;
+}
+
+function onSheetMouseOver(e) {
+  if (!selDragging || !sel) return;
+  const t = e.target.closest('td, th');
+  const inp = t && t.querySelector('input');
+  if (!inp || inp.dataset.r === undefined) return;
+  const r = parseInt(inp.dataset.r, 10), c = parseInt(inp.dataset.c, 10);
+  if (r === sel.fr && c === sel.fc) return;
+  setSelection(sel.ar, sel.ac, r, c);
+  if (selIsMulti()) {
+    // 여러 칸을 선택하는 중에는 칸 안의 글자 선택을 없앰
+    const a = sheetInput(sel.ar, sel.ac);
+    try { a.setSelectionRange(a.value.length, a.value.length); } catch (err) {}
+    const ws = window.getSelection && window.getSelection();
+    if (ws) ws.removeAllRanges();
+  }
+}
+
+function selectionTsv() {
+  const g = selRange();
+  const lines = [];
+  for (let r = g.r1; r <= g.r2; r++) {
+    const row = [];
+    for (let c = g.c1; c <= g.c2; c++) row.push(sheetInput(r, c).value);
+    lines.push(row.join('\t'));
+  }
+  while (lines.length > 1 && lines[lines.length - 1].replace(/\t/g, '') === '') lines.pop();
+  return lines.join('\r\n') + '\r\n';
+}
+
+function clearSelectedCells() {
+  const g = selRange();
+  for (let r = g.r1; r <= g.r2; r++) for (let c = g.c1; c <= g.c2; c++) sheetInput(r, c).value = '';
+  refreshColumnPickers();
+}
+
+function onSheetCopy(e, cut) {
+  if (!selIsMulti() || !e.clipboardData) return;
+  e.preventDefault();
+  e.clipboardData.setData('text/plain', selectionTsv());
+  if (cut) clearSelectedCells();
+}
+
 function focusCell(r, c) {
   if (c < 0 || c >= nameInputs.length || r < -1) return;
   if (r >= cellInputs.length) ensureSheetSize(r + 1, nameInputs.length);
   const el = r === -1 ? nameInputs[c] : cellInputs[r][c];
+  setSelection(r, c, r, c);
   el.focus();
   el.select();
 }
@@ -781,6 +910,21 @@ function onSheetKeyDown(e) {
   const r = parseInt(t.dataset.r, 10), c = parseInt(t.dataset.c, 10);
   const atStart = t.selectionStart === 0 && t.selectionEnd === 0;
   const atEnd = t.selectionStart === t.value.length;
+  if (e.shiftKey && sel && ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key) &&
+      (selIsMulti() || e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+    e.preventDefault();
+    const dr = e.key === 'ArrowDown' ? 1 : e.key === 'ArrowUp' ? -1 : 0;
+    const dc = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
+    const fr = Math.min(Math.max(sel.fr + dr, -1), cellInputs.length - 1);
+    const fc = Math.min(Math.max(sel.fc + dc, 0), nameInputs.length - 1);
+    setSelection(sel.ar, sel.ac, fr, fc);
+    return;
+  }
+  if ((e.key === 'Delete' || e.key === 'Backspace') && selIsMulti()) {
+    e.preventDefault();
+    clearSelectedCells();
+    return;
+  }
   if (e.key === 'Enter' || e.key === 'ArrowDown') { e.preventDefault(); focusCell(r + 1, c); }
   else if (e.key === 'ArrowUp') { e.preventDefault(); focusCell(r - 1, c); }
   else if (e.key === 'ArrowLeft' && atStart) { e.preventDefault(); focusCell(r, c - 1); }
@@ -865,7 +1009,9 @@ function onSheetPaste(e) {
   if (rows.length === 1 && rows[0].length === 1) return;
   e.preventDefault();
 
-  const { count, width } = placeMatrix(rows, parseInt(t.dataset.r, 10), parseInt(t.dataset.c, 10));
+  const g = selIsMulti() ? selRange() : null;
+  const { count, width } = placeMatrix(rows, g ? g.r1 : parseInt(t.dataset.r, 10), g ? g.c1 : parseInt(t.dataset.c, 10));
+  clearSelectionMarks();
   const msg = [`※ ${count}행 × ${width}열을 붙여넣었습니다.`];
   let warn = false;
   if (source === 'excel') {
@@ -884,6 +1030,11 @@ function setupSheet() {
   const t = document.getElementById('sheet');
   t.addEventListener('keydown', onSheetKeyDown);
   t.addEventListener('paste', onSheetPaste);
+  t.addEventListener('mousedown', onSheetMouseDown);
+  t.addEventListener('mouseover', onSheetMouseOver);
+  t.addEventListener('copy', e => onSheetCopy(e, false));
+  t.addEventListener('cut', e => onSheetCopy(e, true));
+  document.addEventListener('mouseup', () => { selDragging = false; });
   t.addEventListener('change', refreshColumnPickers);
   document.querySelectorAll('input[name="layout"]').forEach(i => i.addEventListener('change', updateLayoutUi));
   document.getElementById('subgroupSize').addEventListener('input', updateLayoutUi);

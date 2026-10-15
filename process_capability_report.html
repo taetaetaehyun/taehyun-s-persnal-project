@@ -424,7 +424,7 @@
           <option value="sbar">Sbar (표준편차 평균)</option>
         </select>
       </span>
-      <label class="check" style="display:flex; gap:6px; align-items:center;"><input type="checkbox" id="unbiased" checked> 불편화 상수 사용 (Minitab 기본값)</label>
+      <label class="check" style="display:flex; gap:6px; align-items:center;"><input type="checkbox" id="unbiased" checked> 불편화 상수 사용 (군내, Minitab 기본값)</label>
     </div>
     <div class="hint" style="margin:8px 0 0 0; color:#6b7280;">※ 부분군 크기 1 = 개별값(이동범위로 군내 표준편차 계산). 부분군 행 위치 = 선택한 열들의 같은 행 값이 한 부분군.</div>
   </div>
@@ -536,6 +536,8 @@ const normalPdf = (x, mean, std) => (1 / (std * Math.sqrt(2 * Math.PI))) * Math.
 //  워크시트 (Minitab 워크시트처럼 열(C1, C2 …)마다 이름과 값을 셀에 입력)
 // =====================================================================
 const fmt = (v, d) => (v === null || v === undefined || !isFinite(v)) ? '*' : v.toFixed(d);
+// Minitab 표시 방식: 유효숫자 6자리 (예: 3517.78, 0.967467, 1.02917)
+const fmtSig = v => (v === null || v === undefined || !isFinite(v)) ? '*' : String(Number(v.toPrecision(6)));
 
 const SHEET_MIN_COLS = 8, SHEET_MIN_ROWS = 30;
 const SAMPLE_DATA = '48.5 48.1 48.9 48.6 48.1 47.9 48.6 47.6 47.9 48.9 48.3 48.1 47.5 48.3 48.6 48.2 48.6 48.7 48.2 47.6';
@@ -1006,7 +1008,8 @@ function analyzeData() {
 
   const mean = avg(data);
   const s = sampleStd(data);
-  const stdOverall = unbiased ? s / c4(n) : s;
+  // 전체 표준편차: 표본 표준편차 그대로 (Minitab은 전체에는 불편화 상수를 쓰지 않음 - 실제 데이터로 확인)
+  const stdOverall = s;
   const stdWithin = withinStdDev(data, subgroups, method, unbiased);
 
   const within = capabilityIndices(mean, stdWithin, lsl, usl);
@@ -1040,9 +1043,9 @@ function analyzeData() {
   setText('txtUSL', usl !== null ? usl : '*');
   setText('txtN', n);
   setText('txtSubgroups', input.subgroupText);
-  setText('txtMean', fmt(mean, 4));
-  setText('txtStd', fmt(stdWithin, 5));
-  setText('txtStdOverall', fmt(stdOverall, 5));
+  setText('txtMean', fmtSig(mean));
+  setText('txtStd', fmtSig(stdWithin));
+  setText('txtStdOverall', fmtSig(stdOverall));
   setText('txtCp', fmt(within.whole, 2));
   setText('txtCpl', fmt(within.lower, 2));
   setText('txtCpu', fmt(within.upper, 2));

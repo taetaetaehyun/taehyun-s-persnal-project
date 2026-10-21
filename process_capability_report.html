@@ -1527,7 +1527,7 @@ function showXbarRSummary(s) {
 }
 
 // Xbar-R 패널 여백 (그림 영역 = 가로 25 : 세로 7)
-const XBR = { left: 58, right: 104, title: 26, gap: 16, ratio: 7 / 25 };
+const XBR = { left: 58, right: 128, title: 26, gap: 16, ratio: 7 / 25 };
 
 function xbarrLabelSpace(ctx, s) {
   ctx.font = `9px ${FONT}`;
@@ -1548,16 +1548,16 @@ function renderXbarR(ctx, w, h, s) {
   const gap = XBR.gap;
   const topH = xbarrPanelHeight(ctx, w, s);
   const xLines = [
-    { name: 'UCL', values: s.xU, color: SPEC_COLOR, dash: [6, 4] },
+    { name: 'UCL(+3σ)', values: s.xU, color: SPEC_COLOR, dash: [6, 4] },
     { name: 'CL', values: s.xbars.map(() => s.xbb), color: '#008a3e', dash: [] },
-    { name: 'LCL', values: s.xL, color: SPEC_COLOR, dash: [6, 4] }
+    { name: 'LCL(-3σ)', values: s.xL, color: SPEC_COLOR, dash: [6, 4] }
   ];
   if (s.showSpec) {
     if (s.usl !== null) xLines.push({ name: 'USL', values: s.xbars.map(() => s.usl), color: '#e67e22', dash: [2, 3] });
     if (s.lsl !== null) xLines.push({ name: 'LSL', values: s.xbars.map(() => s.lsl), color: '#e67e22', dash: [2, 3] });
   }
   const rLines = [
-    { name: 'UCL', values: s.rU, color: SPEC_COLOR, dash: [6, 4] },
+    { name: 'UCL(+3σ)', values: s.rU, color: SPEC_COLOR, dash: [6, 4] },
     { name: 'CL', values: s.rC, color: '#008a3e', dash: [] }
   ];
   if (s.rUsl !== null) rLines.push({ name: 'USL', values: s.ranges.map(() => s.rUsl), color: '#e67e22', dash: [2, 3] });
@@ -1604,6 +1604,11 @@ function drawControlPanel(ctx, box, s, o) {
     ctx.fillStyle = '#000000';
     ctx.fillText(fmtTick(v, dec), plot.left - 4, y);
   });
+  // 세로 보조선 (Lot 위치마다)
+  ctx.strokeStyle = GRID_COLOR;
+  for (let i = 0; i < k; i++) {
+    ctx.beginPath(); ctx.moveTo(px(i), plot.top); ctx.lineTo(px(i), plot.bottom); ctx.stroke();
+  }
   ctx.strokeStyle = '#000000';
   ctx.strokeRect(plot.left, plot.top, plot.right - plot.left, plot.bottom - plot.top);
 

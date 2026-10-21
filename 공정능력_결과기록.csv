@@ -1,1 +1,1 @@
-﻿저장일시,작성자,제목(조성),Job(Lot),데이터배열,부분군(개수x크기),군내추정방법,불편화상수,LSL,Target,USL,N,평균,StDev(전체),StDev(군내),Cp,CPL,CPU,Cpk,Pp,PPL,PPU,Ppk,Cpm,PPM관측,PPM기대(전체),PPM기대(군내),Xbar UCL,Xbar CL,Xbar LCL,R UCL,R CL,R USL,Xbar 이탈수,R 이탈수,원본데이터
+﻿기록ID,저장일시,작성자,제목(조성),Job(Lot),고객명,품명,공정명,항목,작업자,측정일자,데이터배열,부분군(개수x크기),군내추정방법,불편화상수,LSL,Target,USL,N,평균,StDev(전체),StDev(군내),Cp,CPL,CPU,Cpk,Pp,PPL,PPU,Ppk,Cpm,PPM관측,PPM기대(전체),PPM기대(군내),Xbar UCL,Xbar CL,Xbar LCL,R UCL,R CL,R USL,Xbar 이탈수,R 이탈수,그래프(히스토그램),그래프(XbarR),원본데이터

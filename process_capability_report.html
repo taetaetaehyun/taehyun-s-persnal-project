@@ -361,7 +361,7 @@
     height: 380px;
     position: relative;
   }
-  .chart-wrap.tall { height: 620px; }
+  .chart-wrap.tall { height: 680px; }
   .xbarr-box { display: none; width: 600px; }
   .chart-wrap canvas {
     display: block;
@@ -422,7 +422,8 @@
       <span>부분군 크기(Z) <input type="text" id="subgroupSize" value="1" style="width:90px;"></span>
       <span style="color:#6b7280; font-size:12px;">(상수 또는 ID 열 사용 - 예: 1, 5, C2)</span>
     </div>
-    <label class="mt-option"><input type="radio" name="layout" value="rows"> 부분군 행 위치(B)</label>
+    <label class="mt-option"><input type="radio" name="layout" value="cols"> 열(Lot) = 부분군 - SPC 시트 방식 (체크한 열 하나하나가 한 부분군, 예: Lot당 20개 → n=20)</label>
+    <label class="mt-option"><input type="radio" name="layout" value="rows"> 부분군 행 위치(B) - 체크한 열들의 같은 행 값이 한 부분군</label>
     <div class="mt-sub"><div id="rowCols"></div></div>
     <div class="mt-row">
       <span>군내 표준편차 추정
@@ -434,7 +435,7 @@
       </span>
       <label class="check" style="display:flex; gap:6px; align-items:center;"><input type="checkbox" id="unbiased" checked> 불편화 상수 사용 (군내, Minitab 기본값)</label>
     </div>
-    <div class="hint" style="margin:8px 0 0 0; color:#6b7280;">※ 부분군 크기 1 = 개별값(이동범위로 군내 표준편차 계산). 부분군 행 위치 = 선택한 열들의 같은 행 값이 한 부분군.</div>
+    <div class="hint" style="margin:8px 0 0 0; color:#6b7280;">※ 부분군 크기 1 = 개별값(이동범위로 군내 표준편차 계산). 엑셀에서 여러 Lot 열을 붙여넣으면 "열(Lot) = 부분군"이 자동 선택됩니다.</div>
   </div>
 
   <div class="field">
@@ -454,9 +455,10 @@
           <option value="analysis">위 데이터 배열 형식의 부분군 그대로</option>
         </select>
       </span>
-      <label class="check" style="display:flex; gap:6px; align-items:center;"><input type="checkbox" id="xbarrSpec"> X̄ 관리도에 규격선(USL/LSL) 표시</label>
+      <label class="check" style="display:flex; gap:6px; align-items:center;"><input type="checkbox" id="xbarrSpec"> Xbar 관리도에 규격선(USL/LSL) 표시</label>
+      <span>R 관리도 USL (선택) <input type="text" id="xbarrRUsl" placeholder="예: 8" style="width:90px;"></span>
     </div>
-    <div class="hint" style="margin:8px 0 0 0; color:#6b7280;">※ 관리한계: X̄ = X̿ ± A2·R̄, R = D4·R̄ / D3·R̄ (부분군 크기 n에 맞는 계수 자동 적용, n = 2~25). 관리한계를 벗어난 점은 빨간 네모로 표시됩니다.</div>
+    <div class="hint" style="margin:8px 0 0 0; color:#6b7280;">※ 관리한계: Xbar = X̿ ± A2·R̄, R = D4·R̄ (한쪽 UCL만, 부분군 크기 n에 맞는 계수 자동 적용, n = 2~25). R 관리도 USL을 넣으면 R 관리도와 결과표에 함께 표시됩니다. 관리한계를 벗어난 점은 빨간 네모로 표시됩니다.</div>
   </div>
 
   <button class="analyze-btn" onclick="analyzeData()">분석 실행 (Analyze)</button>
@@ -517,10 +519,10 @@
       <div class="data-box perf-box xbarr-box" id="xbarrBox">
         <div class="data-box-title">Xbar-R 관리한계</div>
         <div class="data-row perf-head"><span></span><span>UCL</span><span>CL</span><span>LCL</span></div>
-        <div class="data-row"><span>X̄ 관리도</span><span id="xbUcl">-</span><span id="xbCl">-</span><span id="xbLcl">-</span></div>
-        <div class="data-row"><span>R 관리도</span><span id="rUcl">-</span><span id="rCl">-</span><span id="rLcl">-</span></div>
-        <div class="data-row perf-head"><span></span><span>n / 부분군 수</span><span>A2 / D3 / D4</span><span>이탈 X̄ / R</span></div>
-        <div class="data-row"><span id="xbSigma">σ̂ -</span><span id="xbN">-</span><span id="xbConst">-</span><span id="xbOut">-</span></div>
+        <div class="data-row"><span>Xbar 관리도</span><span id="xbUcl">-</span><span id="xbCl">-</span><span id="xbLcl">-</span></div>
+        <div class="data-row"><span>R 관리도</span><span id="rUcl">-</span><span id="rCl">-</span><span>-</span></div>
+        <div class="data-row perf-head"><span></span><span>R 관리도 USL</span><span>n / 부분군 수</span><span>A2 / D4</span></div>
+        <div class="data-row"><span>이탈 Xbar / R : <b id="xbOut">-</b></span><span id="rUslTxt">-</span><span id="xbN">-</span><span id="xbConst">-</span></div>
       </div>
     </div>
   </div>
@@ -732,6 +734,21 @@ function getAnalysisInput() {
   const layout = currentLayout();
   const equalText = sgs => sgs.every(sg => sg.length === sgs[0].length)
     ? `${sgs.length} × ${sgs[0].length}` : `${sgs.length}개 (크기 다름)`;
+
+  if (layout === 'cols') {
+    const cols = Array.from(document.querySelectorAll('#rowCols input:checked')).map(i => parseInt(i.value, 10));
+    if (cols.length < 2) throw new Error('"열(Lot) = 부분군"은 열을 2개 이상 선택해야 합니다.');
+    const colVals = cols.map(columnNumbers);
+    const groups = cols.map((c, k) => ({ name: columnName(c), data: colVals[k].filter(v => v !== null) }));
+    const subgroups = groups.map(g => g.data).filter(d => d.length);
+    return {
+      layout, groups, subgroups,
+      data: groups.flatMap(g => g.data),
+      raw: cols.map(c => ({ name: columnName(c), values: columnRaw(c) })),
+      layoutText: '열부분군',
+      subgroupText: subgroups.length ? equalText(subgroups) : '-'
+    };
+  }
 
   if (layout === 'rows') {
     const cols = Array.from(document.querySelectorAll('#rowCols input:checked')).map(i => parseInt(i.value, 10));
@@ -1004,9 +1021,9 @@ function placeMatrix(rows, r, c0) {
   rows.forEach((rw, i) => rw.forEach((s, k) => { cellInputs[r + i][c0 + k].value = s; }));
 
   refreshColumnPickers();
-  // 여러 열이면 "부분군 행 위치"로 해당 열 선택 (Minitab에서 여러 열을 고르는 것과 같음)
+  // 여러 열이면 "열(Lot) = 부분군"으로 해당 열 선택 (SPC 시트 방식)
   if (width >= 2) {
-    document.querySelector('input[name="layout"][value="rows"]').checked = true;
+    document.querySelector('input[name="layout"][value="cols"]').checked = true;
     document.querySelectorAll('#rowCols input').forEach(i => {
       const c = parseInt(i.value, 10);
       i.checked = c >= c0 && c < c0 + width;
@@ -1264,7 +1281,9 @@ function analyzeData() {
   setText('ppmWiL', fmt(expWi.lo, 2));
   setText('ppmWiU', fmt(expWi.hi, 2));
   setText('ppmWiT', fmt(expWi.total, 2));
-  rememberRecord(input);
+  // Xbar-R 관리한계 (차트 종류와 상관없이 계산해 공유 CSV 에 저장)
+  const xbarr = computeXbarR(input, lsl, usl);
+  rememberRecord(input, xbarr.state || null);
 
   const titleInput = document.getElementById('reportTitle').value.trim();
   document.getElementById('reportTitleDisplay').innerText = titleInput;
@@ -1280,23 +1299,8 @@ function analyzeData() {
   document.getElementById('chartWrap').classList.toggle('tall', isXbarR);
   document.getElementById('xbarrBox').style.display = isXbarR ? 'block' : 'none';
   if (isXbarR) {
-    const basis = document.getElementById('xbarrBasis').value;
-    let sgs, labels;
-    if (basis === 'lot') {
-      sgs = groups.map(g => g.data);
-      labels = groups.map(g => g.name);
-      if (sgs.length < 2) {
-        alert('"열(Lot)마다 한 부분군"은 Lot 열이 2개 이상 필요합니다.\n워크시트에 Lot 열들을 붙여넣고 "부분군 행 위치"에서 해당 열을 체크하거나, 부분군 기준을 "위 데이터 배열 형식의 부분군 그대로"로 바꿔주세요.');
-        return;
-      }
-    } else {
-      if (!subgroups) { alert('부분군 크기 1(개별값)은 Xbar-R 관리도를 그릴 수 없습니다.\n부분군 크기를 2 이상으로 지정하거나 부분군 기준을 "열(Lot)마다 한 부분군"으로 바꿔주세요.'); return; }
-      sgs = subgroups;
-      labels = subgroups.map((_, i) => i + 1);
-    }
-    try {
-      chartState = buildXbarR(sgs, labels, lsl, usl, document.getElementById('xbarrSpec').checked);
-    } catch (err) { alert(err.message); return; }
+    if (!xbarr.state) { alert(xbarr.error); return; }
+    chartState = xbarr.state;
     showXbarRSummary(chartState);
   } else if (chartType === 'boxplot') {
     chartState = buildBoxPlot(groups, lsl, usl, target);
@@ -1428,9 +1432,9 @@ setupSheet();
 //  Xbar-R 관리도
 //  σ̂ = Σ fᵢ·(Rᵢ/d2(nᵢ)) / Σ fᵢ  (fᵢ = d2²/d3², 부분군 크기가 같으면 R̄/d2)
 //  X̄ 관리한계 = X̿ ± 3σ̂/√n   (= X̿ ± A2·R̄)
-//  R  관리한계 = d2σ̂ ± 3d3σ̂ (= D4·R̄, D3·R̄),  CL = d2σ̂ (= R̄)
+//  R  관리한계 = d2σ̂ + 3d3σ̂ (= D4·R̄, 한쪽 UCL 만),  CL = d2σ̂ (= R̄)
 // =====================================================================
-function buildXbarR(subgroups, labels, lsl, usl, showSpec) {
+function buildXbarR(subgroups, labels, opts) {
   const sizes = subgroups.map(sg => sg.length);
   if (subgroups.length < 2) throw new Error('Xbar-R 관리도는 부분군이 2개 이상 필요합니다.');
   if (sizes.some(n => n < 2)) throw new Error('크기가 1인 부분군이 있습니다. Xbar-R 관리도는 부분군 크기가 2 이상이어야 합니다.');
@@ -1453,77 +1457,113 @@ function buildXbarR(subgroups, labels, lsl, usl, showSpec) {
   const xU = sizes.map(n => xbb + 3 * sigma / Math.sqrt(n));
   const xL = sizes.map(n => xbb - 3 * sigma / Math.sqrt(n));
   const rC = sizes.map(n => D2[n] * sigma);
-  const rU = sizes.map(n => (D2[n] + 3 * D3[n]) * sigma);
-  const rL = sizes.map(n => Math.max(0, (D2[n] - 3 * D3[n]) * sigma));
+  const rU = sizes.map(n => (D2[n] + 3 * D3[n]) * sigma);   // R 관리도는 한쪽(UCL)만 사용
 
   const equal = sizes.every(n => n === sizes[0]);
   const n0 = sizes[0];
-  const consts = equal ? {
-    A2: 3 / (D2[n0] * Math.sqrt(n0)),
-    D3: Math.max(0, 1 - 3 * D3[n0] / D2[n0]),
-    D4: 1 + 3 * D3[n0] / D2[n0]
-  } : null;
+  const consts = equal ? { A2: 3 / (D2[n0] * Math.sqrt(n0)), D4: 1 + 3 * D3[n0] / D2[n0] } : null;
 
   const xOut = xbars.map((x, i) => x > xU[i] || x < xL[i]);
-  const rOut = ranges.map((r, i) => r > rU[i] || r < rL[i]);
+  const rOut = ranges.map((r, i) => r > rU[i]);
 
   return {
-    kind: 'xbarr', labels, sizes, equal, xbars, ranges, xbb, rbar, sigma, xU, xL, rC, rU, rL, consts,
-    xOut, rOut, lsl, usl, showSpec
+    kind: 'xbarr', labels, sizes, equal, xbars, ranges, xbb, rbar, sigma, xU, xL, rC, rU, consts,
+    xOut, rOut, lsl: opts.lsl, usl: opts.usl, showSpec: opts.showSpec, rUsl: opts.rUsl
   };
 }
 
-function showXbarRSummary(s) {
-  const setText = (id, text) => { document.getElementById(id).innerText = text; };
-  const d = xbarrDecimals(s);
-  const xf = v => (isFinite(v) ? v.toFixed(d) : '*');
-  const rf = v => (isFinite(v) ? v.toFixed(d) : '*');
-  const one = arr => (s.equal ? arr[0] : null);
-  setText('xbUcl', s.equal ? xf(one(s.xU)) : '부분군별');
-  setText('xbCl', xf(s.xbb));
-  setText('xbLcl', s.equal ? xf(one(s.xL)) : '부분군별');
-  setText('rUcl', s.equal ? rf(one(s.rU)) : '부분군별');
-  setText('rCl', s.equal ? rf(s.rbar) : rf(avg(s.rC)) + ' (평균)');
-  setText('rLcl', s.equal ? rf(one(s.rL)) : '부분군별');
-  setText('xbN', s.equal ? `${s.sizes[0]} / ${s.sizes.length}` : `${Math.min(...s.sizes)}~${Math.max(...s.sizes)} / ${s.sizes.length}`);
-  setText('xbConst', s.consts ? `${s.consts.A2.toFixed(3)}/${s.consts.D3.toFixed(3)}/${s.consts.D4.toFixed(3)}` : '부분군 크기가 달라 부분군별 적용');
-  const xo = s.xOut.filter(Boolean).length, ro = s.rOut.filter(Boolean).length;
-  setText('xbOut', `${xo} / ${ro}`);
-  setText('xbSigma', `σ̂(R̄/d2) ${fmtSig(s.sigma)}`);
+// 분석 입력에서 Xbar-R 계산 (결과, 오류 메시지)
+function computeXbarR(input, lsl, usl) {
+  const basis = document.getElementById('xbarrBasis').value;
+  const rUslRaw = document.getElementById('xbarrRUsl').value.trim();
+  const opts = {
+    lsl, usl, showSpec: document.getElementById('xbarrSpec').checked,
+    rUsl: rUslRaw === '' || isNaN(parseFloat(rUslRaw)) ? null : parseFloat(rUslRaw)
+  };
+  let sgs, labels;
+  if (basis === 'lot') {
+    sgs = input.groups.map(g => g.data);
+    labels = input.groups.map(g => g.name);
+    if (sgs.length < 2) return { error: '"열(Lot)마다 한 부분군"은 Lot 열이 2개 이상 필요합니다.\n워크시트에 Lot 열들을 붙여넣고 "열(Lot) = 부분군"에서 해당 열을 체크하거나, 부분군 기준을 "위 데이터 배열 형식의 부분군 그대로"로 바꿔주세요.' };
+  } else {
+    if (!input.subgroups) return { error: '부분군 크기 1(개별값)은 Xbar-R 관리도를 그릴 수 없습니다.\n부분군 크기를 2 이상으로 지정하거나 부분군 기준을 "열(Lot)마다 한 부분군"으로 바꿔주세요.' };
+    sgs = input.subgroups;
+    labels = input.layout === 'cols' ? input.groups.map(g => g.name) : sgs.map((_, i) => i + 1);
+  }
+  try { return { state: buildXbarR(sgs, labels, opts) }; } catch (err) { return { error: err.message }; }
 }
 
 function xbarrDecimals(s) {
   return Math.max(2, Math.min(6, 1 - Math.floor(Math.log10(Math.max(s.sigma, 1e-12)))));
 }
 
+// Xbar-R 결과를 표시용 문자열로 (요약 상자와 공유 CSV 에 같이 사용)
+function xbarrTexts(s) {
+  if (!s) return null;
+  const d = xbarrDecimals(s);
+  const f = v => (v === null || !isFinite(v) ? '*' : v.toFixed(d));
+  return {
+    xU: s.equal ? f(s.xU[0]) : '부분군별', xC: f(s.xbb), xL: s.equal ? f(s.xL[0]) : '부분군별',
+    rU: s.equal ? f(s.rU[0]) : '부분군별', rC: s.equal ? f(s.rbar) : f(avg(s.rC)), rUsl: f(s.rUsl),
+    n: s.equal ? `${s.sizes[0]} / ${s.sizes.length}` : `${Math.min(...s.sizes)}~${Math.max(...s.sizes)} / ${s.sizes.length}`,
+    consts: s.consts ? `${s.consts.A2.toFixed(3)} / ${s.consts.D4.toFixed(3)}` : '부분군별 적용',
+    xOut: s.xOut.filter(Boolean).length, rOut: s.rOut.filter(Boolean).length
+  };
+}
+
+function showXbarRSummary(s) {
+  const t = xbarrTexts(s);
+  const setText = (id, text) => { document.getElementById(id).innerText = text; };
+  setText('xbUcl', t.xU); setText('xbCl', t.xC); setText('xbLcl', t.xL);
+  setText('rUcl', t.rU); setText('rCl', t.rC); setText('rUslTxt', t.rUsl);
+  setText('xbN', t.n); setText('xbConst', t.consts); setText('xbOut', `${t.xOut} / ${t.rOut}`);
+}
+
 function renderXbarR(ctx, w, h, s) {
   const d = xbarrDecimals(s);
-  const gap = 18;
-  const topH = Math.round((h - gap) * 0.55);
+  const gap = 14;
+  const topH = Math.round((h - gap) / 2);
+  const xLines = [
+    { name: 'UCL', values: s.xU, color: SPEC_COLOR, dash: [6, 4] },
+    { name: 'CL', values: s.xbars.map(() => s.xbb), color: '#008a3e', dash: [] },
+    { name: 'LCL', values: s.xL, color: SPEC_COLOR, dash: [6, 4] }
+  ];
+  if (s.showSpec) {
+    if (s.usl !== null) xLines.push({ name: 'USL', values: s.xbars.map(() => s.usl), color: '#e67e22', dash: [2, 3] });
+    if (s.lsl !== null) xLines.push({ name: 'LSL', values: s.xbars.map(() => s.lsl), color: '#e67e22', dash: [2, 3] });
+  }
+  const rLines = [
+    { name: 'UCL', values: s.rU, color: SPEC_COLOR, dash: [6, 4] },
+    { name: 'CL', values: s.rC, color: '#008a3e', dash: [] }
+  ];
+  if (s.rUsl !== null) rLines.push({ name: 'USL', values: s.ranges.map(() => s.rUsl), color: '#e67e22', dash: [2, 3] });
+
   drawControlPanel(ctx, { x: 0, y: 0, w, h: topH }, s, {
-    title: 'Xbar 관리도 (부분군 평균)', values: s.xbars, U: s.xU, C: s.xbars.map(() => s.xbb), L: s.xL, out: s.xOut,
-    fmt: v => v.toFixed(d), specs: s.showSpec ? [[s.lsl, 'LSL'], [s.usl, 'USL']].filter(p => p[0] !== null) : [],
-    showLabels: false
+    title: 'Xbar 관리도 (부분군 평균)', values: s.xbars, lines: xLines, out: s.xOut, fmt: v => v.toFixed(d), floorZero: false
   });
   drawControlPanel(ctx, { x: 0, y: topH + gap, w, h: h - topH - gap }, s, {
-    title: 'R 관리도 (부분군 범위)', values: s.ranges, U: s.rU, C: s.rC, L: s.rL, out: s.rOut,
-    fmt: v => v.toFixed(d), specs: [], showLabels: true
+    title: 'R 관리도 (부분군 범위)', values: s.ranges, lines: rLines, out: s.rOut, fmt: v => v.toFixed(d), floorZero: true
   });
 }
 
 function drawControlPanel(ctx, box, s, o) {
   const k = o.values.length;
-  const all = o.values.concat(o.U, o.L, o.specs.map(p => p[0]));
+  const all = o.values.concat(...o.lines.map(l => l.values));
   let lo = Math.min(...all), hi = Math.max(...all);
   const padV = (hi - lo) * 0.08 || 1;
   lo -= padV; hi += padV;
+  if (o.floorZero && lo < 0) lo = 0;
   const ticks = niceTicks(lo, hi, Math.max(3, Math.floor(box.h / 40)));
   const dec = decimalsOf(ticks.length > 1 ? ticks[1] - ticks[0] : 1);
 
+  // Lot 이름 라벨 높이 (기울인 글자)
+  ctx.font = `9px ${FONT}`;
+  const labelW = Math.max(...s.labels.map(l => ctx.measureText(String(l)).width));
+  const labelSpace = Math.min(70, labelW * 0.72 + 12);
+
   ctx.font = `10px ${FONT}`;
   const tickW = ticks.length ? Math.max(...ticks.map(v => ctx.measureText(fmtTick(v, dec)).width)) : 20;
-  const labelSpace = o.showLabels ? 40 : 6;
-  const plot = { left: box.x + tickW + 10, right: box.x + box.w - 92, top: box.y + 20, bottom: box.y + box.h - labelSpace };
+  const plot = { left: box.x + tickW + 10, right: box.x + box.w - 104, top: box.y + 20, bottom: box.y + box.h - labelSpace };
   const px = i => plot.left + (k === 1 ? 0.5 : (i + 0.5) / k) * (plot.right - plot.left);
   const py = v => plot.bottom - (v - lo) / (hi - lo) * (plot.bottom - plot.top);
 
@@ -1549,41 +1589,49 @@ function drawControlPanel(ctx, box, s, o) {
   ctx.strokeStyle = '#000000';
   ctx.strokeRect(plot.left, plot.top, plot.right - plot.left, plot.bottom - plot.top);
 
-  // 관리선 (부분군 크기가 다르면 계단 모양)
-  const stepLine = (arr, color, dash, width) => {
+  // 관리선 / 규격선 (부분군 크기가 다르면 계단 모양)
+  const half = (plot.right - plot.left) / k / 2;
+  o.lines.forEach(line => {
     ctx.save();
-    ctx.strokeStyle = color;
-    ctx.lineWidth = width;
-    ctx.setLineDash(dash);
+    ctx.strokeStyle = line.color;
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash(line.dash);
     ctx.beginPath();
-    arr.forEach((v, i) => {
-      const half = (plot.right - plot.left) / k / 2;
+    line.values.forEach((v, i) => {
       const x1 = i === 0 ? plot.left : px(i) - half, x2 = i === k - 1 ? plot.right : px(i) + half;
       if (i === 0) ctx.moveTo(x1, py(v)); else ctx.lineTo(x1, py(v));
       ctx.lineTo(x2, py(v));
     });
     ctx.stroke();
     ctx.restore();
-  };
-  const sideLabel = (text, v, color) => {
-    ctx.font = `bold 10px ${FONT}`;
-    ctx.fillStyle = color;
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(text, plot.right + 4, py(v));
-  };
-  o.specs.forEach(([v, name]) => {
-    stepLine(o.values.map(() => v), '#e67e22', [2, 3], 1.2);
-    sideLabel(`${name}=${o.fmt(v)}`, v, '#e67e22');
   });
-  stepLine(o.U, SPEC_COLOR, [6, 4], 1.5);
-  stepLine(o.L, SPEC_COLOR, [6, 4], 1.5);
-  stepLine(o.C, '#008a3e', [], 1.5);
-  sideLabel(`UCL=${o.fmt(o.U[k - 1])}`, o.U[k - 1], SPEC_COLOR);
-  sideLabel(`CL=${o.fmt(o.C[k - 1])}`, o.C[k - 1], '#008a3e');
-  sideLabel(`LCL=${o.fmt(o.L[k - 1])}`, o.L[k - 1], SPEC_COLOR);
 
-  // 타점 (관리한계 이탈 = 빨간 점)
+  // 오른쪽 값 라벨: 선이 촘촘해도 글자가 겹치지 않도록 위아래로 벌리고 짧은 연결선 표시
+  const lineH = 13;
+  const labels = o.lines.map(line => {
+    const v = line.values[k - 1];
+    return { text: `${line.name}=${o.fmt(v)}`, lineY: py(v), y: py(v), color: line.color };
+  }).sort((a, b) => a.lineY - b.lineY);
+  for (let i = 1; i < labels.length; i++) labels[i].y = Math.max(labels[i].y, labels[i - 1].y + lineH);
+  const overflow = labels.length ? labels[labels.length - 1].y - (box.y + box.h - 6) : 0;
+  if (overflow > 0) labels.forEach(l => { l.y -= overflow; });
+  for (let i = labels.length - 2; i >= 0; i--) labels[i].y = Math.min(labels[i].y, labels[i + 1].y - lineH);
+  ctx.font = `bold 10px ${FONT}`;
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  labels.forEach(l => {
+    ctx.strokeStyle = l.color;
+    ctx.lineWidth = 1;
+    ctx.setLineDash([]);
+    ctx.beginPath();
+    ctx.moveTo(plot.right, l.lineY);
+    ctx.lineTo(plot.right + 6, l.y);
+    ctx.stroke();
+    ctx.fillStyle = l.color;
+    ctx.fillText(l.text, plot.right + 9, l.y);
+  });
+
+  // 타점 (관리한계 이탈 = 빨간 네모)
   ctx.save();
   ctx.strokeStyle = '#1f4e9c';
   ctx.lineWidth = 1.2;
@@ -1599,22 +1647,20 @@ function drawControlPanel(ctx, box, s, o) {
   });
   ctx.restore();
 
-  // x 축 라벨 (Lot 이름) - 아래쪽 차트에만, 많으면 기울여서
-  if (o.showLabels) {
-    ctx.font = `9px ${FONT}`;
-    ctx.fillStyle = '#000000';
-    const step = Math.max(1, Math.ceil(k / Math.max(1, Math.floor((plot.right - plot.left) / 16))));
-    s.labels.forEach((lab, i) => {
-      if (i % step !== 0 && i !== k - 1) return;
-      ctx.save();
-      ctx.translate(px(i), plot.bottom + 4);
-      ctx.rotate(-Math.PI / 4);
-      ctx.textAlign = 'right';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(String(lab), 0, 0);
-      ctx.restore();
-    });
-  }
+  // x 축 Lot 라벨 (많으면 건너뛰며, 기울여서)
+  ctx.font = `9px ${FONT}`;
+  ctx.fillStyle = '#000000';
+  const step = Math.max(1, Math.ceil(k / Math.max(1, Math.floor((plot.right - plot.left) / 14))));
+  s.labels.forEach((lab, i) => {
+    if (i % step !== 0 && i !== k - 1) return;
+    ctx.save();
+    ctx.translate(px(i), plot.bottom + 4);
+    ctx.rotate(-Math.PI / 4);
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(String(lab), 0, 0);
+    ctx.restore();
+  });
 }
 
 function renderChart(ctx, w, h, s) {
@@ -2054,7 +2100,8 @@ const CSV_COLUMNS = [
   '저장일시', '작성자', '제목(조성)', 'Job(Lot)', '데이터배열', '부분군(개수x크기)', '군내추정방법', '불편화상수',
   'LSL', 'Target', 'USL', 'N', '평균', 'StDev(전체)', 'StDev(군내)',
   'Cp', 'CPL', 'CPU', 'Cpk', 'Pp', 'PPL', 'PPU', 'Ppk', 'Cpm',
-  'PPM관측', 'PPM기대(전체)', 'PPM기대(군내)', '원본데이터'
+  'PPM관측', 'PPM기대(전체)', 'PPM기대(군내)',
+  'Xbar UCL', 'Xbar CL', 'Xbar LCL', 'R UCL', 'R CL', 'R USL', 'Xbar 이탈수', 'R 이탈수', '원본데이터'
 ];
 // 예전 열 이름으로 만든 CSV 도 그대로 쓰도록 (예전 이름 → 현재 이름)
 const COLUMN_ALIASES = { '제목(Lot)': '제목(조성)', 'Job(부분군)': 'Job(Lot)' };
@@ -2066,7 +2113,8 @@ let csvHandle = null;    // 연결된 CSV 파일
 let csvRecords = [];     // 읽어온 기록
 
 // ---------- 마지막 분석 결과를 CSV 한 줄 형태로 보관 ----------
-function rememberRecord(input) {
+function rememberRecord(input, xbarrState) {
+  const xt = xbarrTexts(xbarrState);
   const t = id => document.getElementById(id).innerText;
   const individual = !input.subgroups;
   lastRecord = {
@@ -2081,6 +2129,9 @@ function rememberRecord(input) {
     'Cp': t('txtCp'), 'CPL': t('txtCpl'), 'CPU': t('txtCpu'), 'Cpk': t('txtCpk'),
     'Pp': t('txtPp'), 'PPL': t('txtPpl'), 'PPU': t('txtPpu'), 'Ppk': t('txtPpk'), 'Cpm': t('txtCpm'),
     'PPM관측': t('ppmObsT'), 'PPM기대(전체)': t('ppmOvT'), 'PPM기대(군내)': t('ppmWiT'),
+    'Xbar UCL': xt ? xt.xU : '', 'Xbar CL': xt ? xt.xC : '', 'Xbar LCL': xt ? xt.xL : '',
+    'R UCL': xt ? xt.rU : '', 'R CL': xt ? xt.rC : '', 'R USL': xt && xbarrState.rUsl !== null ? xt.rUsl : '',
+    'Xbar 이탈수': xt ? xt.xOut : '', 'R 이탈수': xt ? xt.rOut : '',
     // 다시 불러오기용 (입력한 값 그대로, 결측은 *): 열이름:값 값 값 | 열이름:값 ...
     '원본데이터': input.raw.map(col => `${col.name.replace(/[|:]/g, ' ')}:` +
       col.values.map(v => v === '' ? '*' : v.replace(/\s+/g, '_')).join(' ')).join(' | ')
@@ -2227,7 +2278,20 @@ async function saveToCsvOnce() {
 
   try {
     // 저장 직전에 다시 읽어서 파일의 머리글 순서대로 한 줄을 끝에 덧붙임
-    const { file, header } = await readCsvFile();
+    let { file, header } = await readCsvFile();
+    const missing = CSV_COLUMNS.filter(h => header.length && !header.map(canonColumn).includes(h));
+    if (missing.length) {
+      // 예전 CSV: 머리글 끝에 새 열 이름을 붙여 파일 전체를 다시 씀 (기존 기록은 그대로)
+      let all = await file.text();
+      if (all.charCodeAt(0) === 0xFEFF) all = all.slice(1);
+      const nl = all.search(/\r?\n/);
+      const body = nl >= 0 ? all.slice(nl).replace(/^\r?\n/, '') : '';
+      header = header.concat(missing);
+      const w = await csvHandle.createWritable();
+      await w.write('\uFEFF' + header.map(csvEscape).join(',') + '\r\n' + body);
+      await w.close();
+      file = await csvHandle.getFile();
+    }
     const columns = header.length ? header : CSV_COLUMNS;
     let text = columns.map(h => csvEscape(rec[canonColumn(h)])).join(',') + '\r\n';
     let position = file.size;
@@ -2311,8 +2375,9 @@ function loadRecord(index) {
 
   // 데이터 배열 형식 복원
   const layoutText = r['데이터배열'] || '';
-  const rowsLayout = layoutText.startsWith('부분군행위치');
-  document.querySelector(`input[name="layout"][value="${rowsLayout ? 'rows' : 'single'}"]`).checked = true;
+  const rowsLayout = layoutText.startsWith('부분군행위치') || layoutText.startsWith('열부분군');
+  const layoutValue = layoutText.startsWith('열부분군') ? 'cols' : rowsLayout ? 'rows' : 'single';
+  document.querySelector(`input[name="layout"][value="${layoutValue}"]`).checked = true;
   if (rowsLayout) {
     document.querySelectorAll('#rowCols input').forEach(i => { i.checked = parseInt(i.value, 10) < cols.length; });
   } else {

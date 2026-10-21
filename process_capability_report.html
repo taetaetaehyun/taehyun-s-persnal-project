@@ -361,6 +361,8 @@
     height: 380px;
     position: relative;
   }
+  .chart-wrap.tall { height: 620px; }
+  .xbarr-box { display: none; width: 600px; }
   .chart-wrap canvas {
     display: block;
     width: 100%;
@@ -440,7 +442,21 @@
     <select id="chartType">
       <option value="histogram">히스토그램 (분포)</option>
       <option value="boxplot">박스플롯 (Box Plot)</option>
+      <option value="xbarr">Xbar-R 관리도</option>
     </select>
+  </div>
+  <div class="mt-dialog" id="xbarrOptions" style="display:none; margin-top:-6px;">
+    <div class="mt-dialog-title">Xbar-R 관리도 설정</div>
+    <div class="mt-sub" style="margin-left:0;">
+      <span>부분군 기준
+        <select id="xbarrBasis">
+          <option value="lot">열(Lot)마다 한 부분군 - SPC 시트 방식 (예: Lot당 20개 → n=20)</option>
+          <option value="analysis">위 데이터 배열 형식의 부분군 그대로</option>
+        </select>
+      </span>
+      <label class="check" style="display:flex; gap:6px; align-items:center;"><input type="checkbox" id="xbarrSpec"> X̄ 관리도에 규격선(USL/LSL) 표시</label>
+    </div>
+    <div class="hint" style="margin:8px 0 0 0; color:#6b7280;">※ 관리한계: X̄ = X̿ ± A2·R̄, R = D4·R̄ / D3·R̄ (부분군 크기 n에 맞는 계수 자동 적용, n = 2~25). 관리한계를 벗어난 점은 빨간 네모로 표시됩니다.</div>
   </div>
 
   <button class="analyze-btn" onclick="analyzeData()">분석 실행 (Analyze)</button>
@@ -496,6 +512,15 @@
         <div class="data-row"><span>PPM &lt; LSL</span><span id="ppmObsL">-</span><span id="ppmOvL">-</span><span id="ppmWiL">-</span></div>
         <div class="data-row"><span>PPM &gt; USL</span><span id="ppmObsU">-</span><span id="ppmOvU">-</span><span id="ppmWiU">-</span></div>
         <div class="data-row"><span>PPM Total</span><span id="ppmObsT">-</span><span id="ppmOvT">-</span><span id="ppmWiT">-</span></div>
+      </div>
+
+      <div class="data-box perf-box xbarr-box" id="xbarrBox">
+        <div class="data-box-title">Xbar-R 관리한계</div>
+        <div class="data-row perf-head"><span></span><span>UCL</span><span>CL</span><span>LCL</span></div>
+        <div class="data-row"><span>X̄ 관리도</span><span id="xbUcl">-</span><span id="xbCl">-</span><span id="xbLcl">-</span></div>
+        <div class="data-row"><span>R 관리도</span><span id="rUcl">-</span><span id="rCl">-</span><span id="rLcl">-</span></div>
+        <div class="data-row perf-head"><span></span><span>n / 부분군 수</span><span>A2 / D3 / D4</span><span>이탈 X̄ / R</span></div>
+        <div class="data-row"><span id="xbSigma">σ̂ -</span><span id="xbN">-</span><span id="xbConst">-</span><span id="xbOut">-</span></div>
       </div>
     </div>
   </div>
@@ -1038,6 +1063,10 @@ function setupSheet() {
   t.addEventListener('change', refreshColumnPickers);
   document.querySelectorAll('input[name="layout"]').forEach(i => i.addEventListener('change', updateLayoutUi));
   document.getElementById('subgroupSize').addEventListener('input', updateLayoutUi);
+  const chartSel = document.getElementById('chartType');
+  const syncChartUi = () => { document.getElementById('xbarrOptions').style.display = chartSel.value === 'xbarr' ? 'block' : 'none'; };
+  chartSel.addEventListener('change', syncChartUi);
+  syncChartUi();
   // 기본 데이터: C1~C3 에 1086Y~1088Y, "부분군 행 위치"로 C1~C3 선택
   DEFAULT_SHEET.forEach((col, c) => {
     nameInputs[c].value = col.name;
@@ -1247,7 +1276,29 @@ function analyzeData() {
 
   const binWidth = binWidthInput ? parseFloat(binWidthInput) : null;
   const chartType = document.getElementById('chartType').value;
-  if (chartType === 'boxplot') {
+  const isXbarR = chartType === 'xbarr';
+  document.getElementById('chartWrap').classList.toggle('tall', isXbarR);
+  document.getElementById('xbarrBox').style.display = isXbarR ? 'block' : 'none';
+  if (isXbarR) {
+    const basis = document.getElementById('xbarrBasis').value;
+    let sgs, labels;
+    if (basis === 'lot') {
+      sgs = groups.map(g => g.data);
+      labels = groups.map(g => g.name);
+      if (sgs.length < 2) {
+        alert('"열(Lot)마다 한 부분군"은 Lot 열이 2개 이상 필요합니다.\n워크시트에 Lot 열들을 붙여넣고 "부분군 행 위치"에서 해당 열을 체크하거나, 부분군 기준을 "위 데이터 배열 형식의 부분군 그대로"로 바꿔주세요.');
+        return;
+      }
+    } else {
+      if (!subgroups) { alert('부분군 크기 1(개별값)은 Xbar-R 관리도를 그릴 수 없습니다.\n부분군 크기를 2 이상으로 지정하거나 부분군 기준을 "열(Lot)마다 한 부분군"으로 바꿔주세요.'); return; }
+      sgs = subgroups;
+      labels = subgroups.map((_, i) => i + 1);
+    }
+    try {
+      chartState = buildXbarR(sgs, labels, lsl, usl, document.getElementById('xbarrSpec').checked);
+    } catch (err) { alert(err.message); return; }
+    showXbarRSummary(chartState);
+  } else if (chartType === 'boxplot') {
     chartState = buildBoxPlot(groups, lsl, usl, target);
   } else {
     chartState = buildHistogram(data, mean, stdOverall, stdWithin, lsl, usl, target, binWidth);
@@ -1373,8 +1424,202 @@ function redrawChart() {
 window.addEventListener('resize', redrawChart);
 setupSheet();
 
+// =====================================================================
+//  Xbar-R 관리도
+//  σ̂ = Σ fᵢ·(Rᵢ/d2(nᵢ)) / Σ fᵢ  (fᵢ = d2²/d3², 부분군 크기가 같으면 R̄/d2)
+//  X̄ 관리한계 = X̿ ± 3σ̂/√n   (= X̿ ± A2·R̄)
+//  R  관리한계 = d2σ̂ ± 3d3σ̂ (= D4·R̄, D3·R̄),  CL = d2σ̂ (= R̄)
+// =====================================================================
+function buildXbarR(subgroups, labels, lsl, usl, showSpec) {
+  const sizes = subgroups.map(sg => sg.length);
+  if (subgroups.length < 2) throw new Error('Xbar-R 관리도는 부분군이 2개 이상 필요합니다.');
+  if (sizes.some(n => n < 2)) throw new Error('크기가 1인 부분군이 있습니다. Xbar-R 관리도는 부분군 크기가 2 이상이어야 합니다.');
+  if (sizes.some(n => n > 25)) throw new Error('부분군 크기가 25를 넘습니다. Xbar-R 관리도는 부분군 크기 2~25에서 사용합니다.');
+
+  const xbars = subgroups.map(avg);
+  const ranges = subgroups.map(sg => Math.max(...sg) - Math.min(...sg));
+  const xbb = sum(subgroups.map(sg => sum(sg))) / sum(sizes);   // 전체 평균 (크기가 같으면 X̄ 들의 평균)
+  const rbar = avg(ranges);
+
+  let num = 0, den = 0;
+  subgroups.forEach((sg, i) => {
+    const n = sizes[i];
+    const f = (D2[n] * D2[n]) / (D3[n] * D3[n]);
+    num += f * ranges[i] / D2[n];
+    den += f;
+  });
+  const sigma = num / den;
+
+  const xU = sizes.map(n => xbb + 3 * sigma / Math.sqrt(n));
+  const xL = sizes.map(n => xbb - 3 * sigma / Math.sqrt(n));
+  const rC = sizes.map(n => D2[n] * sigma);
+  const rU = sizes.map(n => (D2[n] + 3 * D3[n]) * sigma);
+  const rL = sizes.map(n => Math.max(0, (D2[n] - 3 * D3[n]) * sigma));
+
+  const equal = sizes.every(n => n === sizes[0]);
+  const n0 = sizes[0];
+  const consts = equal ? {
+    A2: 3 / (D2[n0] * Math.sqrt(n0)),
+    D3: Math.max(0, 1 - 3 * D3[n0] / D2[n0]),
+    D4: 1 + 3 * D3[n0] / D2[n0]
+  } : null;
+
+  const xOut = xbars.map((x, i) => x > xU[i] || x < xL[i]);
+  const rOut = ranges.map((r, i) => r > rU[i] || r < rL[i]);
+
+  return {
+    kind: 'xbarr', labels, sizes, equal, xbars, ranges, xbb, rbar, sigma, xU, xL, rC, rU, rL, consts,
+    xOut, rOut, lsl, usl, showSpec
+  };
+}
+
+function showXbarRSummary(s) {
+  const setText = (id, text) => { document.getElementById(id).innerText = text; };
+  const d = xbarrDecimals(s);
+  const xf = v => (isFinite(v) ? v.toFixed(d) : '*');
+  const rf = v => (isFinite(v) ? v.toFixed(d) : '*');
+  const one = arr => (s.equal ? arr[0] : null);
+  setText('xbUcl', s.equal ? xf(one(s.xU)) : '부분군별');
+  setText('xbCl', xf(s.xbb));
+  setText('xbLcl', s.equal ? xf(one(s.xL)) : '부분군별');
+  setText('rUcl', s.equal ? rf(one(s.rU)) : '부분군별');
+  setText('rCl', s.equal ? rf(s.rbar) : rf(avg(s.rC)) + ' (평균)');
+  setText('rLcl', s.equal ? rf(one(s.rL)) : '부분군별');
+  setText('xbN', s.equal ? `${s.sizes[0]} / ${s.sizes.length}` : `${Math.min(...s.sizes)}~${Math.max(...s.sizes)} / ${s.sizes.length}`);
+  setText('xbConst', s.consts ? `${s.consts.A2.toFixed(3)}/${s.consts.D3.toFixed(3)}/${s.consts.D4.toFixed(3)}` : '부분군 크기가 달라 부분군별 적용');
+  const xo = s.xOut.filter(Boolean).length, ro = s.rOut.filter(Boolean).length;
+  setText('xbOut', `${xo} / ${ro}`);
+  setText('xbSigma', `σ̂(R̄/d2) ${fmtSig(s.sigma)}`);
+}
+
+function xbarrDecimals(s) {
+  return Math.max(2, Math.min(6, 1 - Math.floor(Math.log10(Math.max(s.sigma, 1e-12)))));
+}
+
+function renderXbarR(ctx, w, h, s) {
+  const d = xbarrDecimals(s);
+  const gap = 18;
+  const topH = Math.round((h - gap) * 0.55);
+  drawControlPanel(ctx, { x: 0, y: 0, w, h: topH }, s, {
+    title: 'Xbar 관리도 (부분군 평균)', values: s.xbars, U: s.xU, C: s.xbars.map(() => s.xbb), L: s.xL, out: s.xOut,
+    fmt: v => v.toFixed(d), specs: s.showSpec ? [[s.lsl, 'LSL'], [s.usl, 'USL']].filter(p => p[0] !== null) : [],
+    showLabels: false
+  });
+  drawControlPanel(ctx, { x: 0, y: topH + gap, w, h: h - topH - gap }, s, {
+    title: 'R 관리도 (부분군 범위)', values: s.ranges, U: s.rU, C: s.rC, L: s.rL, out: s.rOut,
+    fmt: v => v.toFixed(d), specs: [], showLabels: true
+  });
+}
+
+function drawControlPanel(ctx, box, s, o) {
+  const k = o.values.length;
+  const all = o.values.concat(o.U, o.L, o.specs.map(p => p[0]));
+  let lo = Math.min(...all), hi = Math.max(...all);
+  const padV = (hi - lo) * 0.08 || 1;
+  lo -= padV; hi += padV;
+  const ticks = niceTicks(lo, hi, Math.max(3, Math.floor(box.h / 40)));
+  const dec = decimalsOf(ticks.length > 1 ? ticks[1] - ticks[0] : 1);
+
+  ctx.font = `10px ${FONT}`;
+  const tickW = ticks.length ? Math.max(...ticks.map(v => ctx.measureText(fmtTick(v, dec)).width)) : 20;
+  const labelSpace = o.showLabels ? 40 : 6;
+  const plot = { left: box.x + tickW + 10, right: box.x + box.w - 92, top: box.y + 20, bottom: box.y + box.h - labelSpace };
+  const px = i => plot.left + (k === 1 ? 0.5 : (i + 0.5) / k) * (plot.right - plot.left);
+  const py = v => plot.bottom - (v - lo) / (hi - lo) * (plot.bottom - plot.top);
+
+  // 제목
+  ctx.font = `bold 12px ${FONT}`;
+  ctx.fillStyle = '#000000';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+  ctx.fillText(o.title, box.x, box.y);
+
+  // 그리드 + y 눈금
+  ctx.font = `10px ${FONT}`;
+  ctx.strokeStyle = GRID_COLOR;
+  ctx.lineWidth = 1;
+  ctx.textAlign = 'right';
+  ctx.textBaseline = 'middle';
+  ticks.forEach(v => {
+    const y = py(v);
+    ctx.beginPath(); ctx.moveTo(plot.left, y); ctx.lineTo(plot.right, y); ctx.stroke();
+    ctx.fillStyle = '#000000';
+    ctx.fillText(fmtTick(v, dec), plot.left - 4, y);
+  });
+  ctx.strokeStyle = '#000000';
+  ctx.strokeRect(plot.left, plot.top, plot.right - plot.left, plot.bottom - plot.top);
+
+  // 관리선 (부분군 크기가 다르면 계단 모양)
+  const stepLine = (arr, color, dash, width) => {
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = width;
+    ctx.setLineDash(dash);
+    ctx.beginPath();
+    arr.forEach((v, i) => {
+      const half = (plot.right - plot.left) / k / 2;
+      const x1 = i === 0 ? plot.left : px(i) - half, x2 = i === k - 1 ? plot.right : px(i) + half;
+      if (i === 0) ctx.moveTo(x1, py(v)); else ctx.lineTo(x1, py(v));
+      ctx.lineTo(x2, py(v));
+    });
+    ctx.stroke();
+    ctx.restore();
+  };
+  const sideLabel = (text, v, color) => {
+    ctx.font = `bold 10px ${FONT}`;
+    ctx.fillStyle = color;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(text, plot.right + 4, py(v));
+  };
+  o.specs.forEach(([v, name]) => {
+    stepLine(o.values.map(() => v), '#e67e22', [2, 3], 1.2);
+    sideLabel(`${name}=${o.fmt(v)}`, v, '#e67e22');
+  });
+  stepLine(o.U, SPEC_COLOR, [6, 4], 1.5);
+  stepLine(o.L, SPEC_COLOR, [6, 4], 1.5);
+  stepLine(o.C, '#008a3e', [], 1.5);
+  sideLabel(`UCL=${o.fmt(o.U[k - 1])}`, o.U[k - 1], SPEC_COLOR);
+  sideLabel(`CL=${o.fmt(o.C[k - 1])}`, o.C[k - 1], '#008a3e');
+  sideLabel(`LCL=${o.fmt(o.L[k - 1])}`, o.L[k - 1], SPEC_COLOR);
+
+  // 타점 (관리한계 이탈 = 빨간 점)
+  ctx.save();
+  ctx.strokeStyle = '#1f4e9c';
+  ctx.lineWidth = 1.2;
+  ctx.beginPath();
+  o.values.forEach((v, i) => (i === 0 ? ctx.moveTo(px(i), py(v)) : ctx.lineTo(px(i), py(v))));
+  ctx.stroke();
+  o.values.forEach((v, i) => {
+    ctx.beginPath();
+    ctx.fillStyle = o.out[i] ? '#d00000' : '#1f4e9c';
+    if (o.out[i]) ctx.rect(px(i) - 3.5, py(v) - 3.5, 7, 7);
+    else ctx.arc(px(i), py(v), 3, 0, Math.PI * 2);
+    ctx.fill();
+  });
+  ctx.restore();
+
+  // x 축 라벨 (Lot 이름) - 아래쪽 차트에만, 많으면 기울여서
+  if (o.showLabels) {
+    ctx.font = `9px ${FONT}`;
+    ctx.fillStyle = '#000000';
+    const step = Math.max(1, Math.ceil(k / Math.max(1, Math.floor((plot.right - plot.left) / 16))));
+    s.labels.forEach((lab, i) => {
+      if (i % step !== 0 && i !== k - 1) return;
+      ctx.save();
+      ctx.translate(px(i), plot.bottom + 4);
+      ctx.rotate(-Math.PI / 4);
+      ctx.textAlign = 'right';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(String(lab), 0, 0);
+      ctx.restore();
+    });
+  }
+}
+
 function renderChart(ctx, w, h, s) {
-  if (s.kind === 'boxplot') renderBoxPlot(ctx, w, h, s);
+  if (s.kind === 'xbarr') renderXbarR(ctx, w, h, s);
+  else if (s.kind === 'boxplot') renderBoxPlot(ctx, w, h, s);
   else renderHistogram(ctx, w, h, s);
 }
 

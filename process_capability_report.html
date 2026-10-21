@@ -361,7 +361,11 @@
     height: 380px;
     position: relative;
   }
-  .chart-wrap.tall { height: 680px; }
+  /* Xbar-R 모드: 상자들은 위에 나란히, 관리도는 아래에 전체 폭으로 */
+  .dashboard-grid.xbarr-mode { grid-template-columns: auto 1fr; }
+  .xbarr-mode .left-col { grid-column: 1; grid-row: 2; }
+  .xbarr-mode .right-col { grid-column: 2; grid-row: 2; flex-direction: row; align-items: flex-start; }
+  .xbarr-mode .chart-wrap { grid-column: 1 / -1; grid-row: 3; height: auto; }
   .xbarr-box { display: none; width: 600px; }
   .chart-wrap canvas {
     display: block;
@@ -1296,7 +1300,7 @@ function analyzeData() {
   const binWidth = binWidthInput ? parseFloat(binWidthInput) : null;
   const chartType = document.getElementById('chartType').value;
   const isXbarR = chartType === 'xbarr';
-  document.getElementById('chartWrap').classList.toggle('tall', isXbarR);
+  document.getElementById('dashboardGrid').classList.toggle('xbarr-mode', isXbarR);
   document.getElementById('xbarrBox').style.display = isXbarR ? 'block' : 'none';
   if (isXbarR) {
     if (!xbarr.state) { alert(xbarr.error); return; }
@@ -1414,7 +1418,10 @@ function buildBoxPlot(groups, lsl, usl, target) {
 function redrawChart() {
   if (!chartState) return;
   const canvas = document.getElementById('capChart');
-  const w = canvas.clientWidth, h = canvas.clientHeight;
+  const w = canvas.clientWidth;
+  if (chartState.kind === 'xbarr') canvas.style.height = xbarrCanvasHeight(canvas.getContext('2d'), w, chartState) + 'px';
+  else canvas.style.height = '';
+  const h = canvas.clientHeight;
   if (w === 0 || h === 0) return;
   const dpr = Math.max(window.devicePixelRatio || 1, 2);
   canvas.width = Math.round(w * dpr);
@@ -1519,10 +1526,27 @@ function showXbarRSummary(s) {
   setText('xbN', t.n); setText('xbConst', t.consts); setText('xbOut', `${t.xOut} / ${t.rOut}`);
 }
 
+// Xbar-R 패널 여백 (그림 영역 = 가로 25 : 세로 7)
+const XBR = { left: 58, right: 104, title: 26, gap: 16, ratio: 7 / 25 };
+
+function xbarrLabelSpace(ctx, s) {
+  ctx.font = `9px ${FONT}`;
+  const labelW = Math.max(...s.labels.map(l => ctx.measureText(String(l)).width));
+  return Math.min(70, labelW * 0.72 + 14);
+}
+
+function xbarrPanelHeight(ctx, w, s) {
+  return XBR.title + Math.round((w - XBR.left - XBR.right) * XBR.ratio) + xbarrLabelSpace(ctx, s);
+}
+
+function xbarrCanvasHeight(ctx, w, s) {
+  return Math.round(xbarrPanelHeight(ctx, w, s) * 2 + XBR.gap);
+}
+
 function renderXbarR(ctx, w, h, s) {
   const d = xbarrDecimals(s);
-  const gap = 14;
-  const topH = Math.round((h - gap) / 2);
+  const gap = XBR.gap;
+  const topH = xbarrPanelHeight(ctx, w, s);
   const xLines = [
     { name: 'UCL', values: s.xU, color: SPEC_COLOR, dash: [6, 4] },
     { name: 'CL', values: s.xbars.map(() => s.xbb), color: '#008a3e', dash: [] },
@@ -1539,10 +1563,10 @@ function renderXbarR(ctx, w, h, s) {
   if (s.rUsl !== null) rLines.push({ name: 'USL', values: s.ranges.map(() => s.rUsl), color: '#e67e22', dash: [2, 3] });
 
   drawControlPanel(ctx, { x: 0, y: 0, w, h: topH }, s, {
-    title: 'Xbar 관리도 (부분군 평균)', values: s.xbars, lines: xLines, out: s.xOut, fmt: v => v.toFixed(d), floorZero: false
+    title: 'Xbar Chart', values: s.xbars, lines: xLines, out: s.xOut, fmt: v => v.toFixed(d), floorZero: false
   });
   drawControlPanel(ctx, { x: 0, y: topH + gap, w, h: h - topH - gap }, s, {
-    title: 'R 관리도 (부분군 범위)', values: s.ranges, lines: rLines, out: s.rOut, fmt: v => v.toFixed(d), floorZero: true
+    title: 'R Chart', values: s.ranges, lines: rLines, out: s.rOut, fmt: v => v.toFixed(d), floorZero: true
   });
 }
 
@@ -1553,26 +1577,20 @@ function drawControlPanel(ctx, box, s, o) {
   const padV = (hi - lo) * 0.08 || 1;
   lo -= padV; hi += padV;
   if (o.floorZero && lo < 0) lo = 0;
-  const ticks = niceTicks(lo, hi, Math.max(3, Math.floor(box.h / 40)));
+  const labelSpace = xbarrLabelSpace(ctx, s);
+  const plot = { left: box.x + XBR.left, right: box.x + box.w - XBR.right, top: box.y + XBR.title, bottom: box.y + box.h - labelSpace };
+  const ticks = niceTicks(lo, hi, Math.max(3, Math.floor((plot.bottom - plot.top) / 32)));
   const dec = decimalsOf(ticks.length > 1 ? ticks[1] - ticks[0] : 1);
 
-  // Lot 이름 라벨 높이 (기울인 글자)
-  ctx.font = `9px ${FONT}`;
-  const labelW = Math.max(...s.labels.map(l => ctx.measureText(String(l)).width));
-  const labelSpace = Math.min(70, labelW * 0.72 + 12);
-
-  ctx.font = `10px ${FONT}`;
-  const tickW = ticks.length ? Math.max(...ticks.map(v => ctx.measureText(fmtTick(v, dec)).width)) : 20;
-  const plot = { left: box.x + tickW + 10, right: box.x + box.w - 104, top: box.y + 20, bottom: box.y + box.h - labelSpace };
   const px = i => plot.left + (k === 1 ? 0.5 : (i + 0.5) / k) * (plot.right - plot.left);
   const py = v => plot.bottom - (v - lo) / (hi - lo) * (plot.bottom - plot.top);
 
-  // 제목
-  ctx.font = `bold 12px ${FONT}`;
+  // 제목 (그림 영역 가운데)
+  ctx.font = `bold 13px ${FONT}`;
   ctx.fillStyle = '#000000';
-  ctx.textAlign = 'left';
+  ctx.textAlign = 'center';
   ctx.textBaseline = 'top';
-  ctx.fillText(o.title, box.x, box.y);
+  ctx.fillText(o.title, (plot.left + plot.right) / 2, box.y + 4);
 
   // 그리드 + y 눈금
   ctx.font = `10px ${FONT}`;

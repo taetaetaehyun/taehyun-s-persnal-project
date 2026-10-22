@@ -2299,7 +2299,8 @@ function spcValues(rec, nums, dataCols, xbarrState) {
   return v;
 }
 
-async function buildSpcXlsx(values, sheetName, histBlob, xbarrBlob) {
+// 템플릿을 값·사진으로 채운 파일 목록 (시트 1개짜리 통합 문서)
+async function fillSpcTemplate(values, histBlob, xbarrBlob) {
   const bin = atob(SPC_TEMPLATE_B64);
   const tpl = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) tpl[i] = bin.charCodeAt(i);
@@ -2316,16 +2317,81 @@ async function buildSpcXlsx(values, sheetName, histBlob, xbarrBlob) {
           return `<c r="${ref}"${attrs} t="inlineStr"><is><t xml:space="preserve">${xmlEsc(val)}</t></is></c>`;
         });
       f.data = enc.encode(xml);
-    } else if (f.name === 'xl/workbook.xml' || f.name === 'docProps/app.xml') {
-      const xml = dec.decode(f.data).split('SPC Chart').join(xmlEsc(sheetName));
-      f.data = enc.encode(xml);
     } else if (f.name === 'xl/media/image1.png' && histBlob) {
       f.data = new Uint8Array(await histBlob.arrayBuffer());
     } else if (f.name === 'xl/media/image2.png' && xbarrBlob) {
       f.data = new Uint8Array(await xbarrBlob.arrayBuffer());
     }
   }
-  return zipBytes(files);
+  return files;
+}
+
+const xmlUnesc = s => s.replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+
+// 조성별 SPC 파일에 시트 하나 추가 (파일이 없으면 새로 만듦). 실제로 붙인 시트 이름을 돌려줌
+async function appendSpcSheet(existingBuf, values, sheetName, histBlob, xbarrBlob) {
+  const filled = await fillSpcTemplate(values, histBlob, xbarrBlob);
+  const dec = new TextDecoder(), enc = new TextEncoder();
+  const get = (files, name) => files.find(f => f.name === name);
+  const text = (files, name) => dec.decode(get(files, name).data);
+  const setText = (files, name, s) => { get(files, name).data = enc.encode(s); };
+
+  const files = existingBuf ? await unzipBytes(existingBuf) : filled;
+  let wb = text(files, 'xl/workbook.xml');
+
+  // 같은 이름의 시트가 있으면 (2), (3) … 을 붙임
+  const used = new Set([...wb.matchAll(/<sheet [^>]*name="([^"]*)"/g)].map(m => xmlUnesc(m[1]).toLowerCase()));
+  let name = sheetName;
+  for (let i = 2; used.has(name.toLowerCase()) && existingBuf; i++) {
+    const tail = ` (${i})`;
+    name = sheetName.slice(0, 31 - tail.length) + tail;
+  }
+
+  if (!existingBuf) {
+    // 새 파일: 템플릿의 'SPC Chart' 이름만 바꿈
+    for (const n of ['xl/workbook.xml', 'docProps/app.xml']) setText(files, n, text(files, n).split('SPC Chart').join(xmlEsc(name)));
+    return { blob: await zipBytes(files), sheetName: name };
+  }
+
+  // 기존 파일: 시트·그림·사진 파트를 다음 번호로 추가
+  const maxNo = re => Math.max(0, ...files.map(f => (re.exec(f.name) || [0, 0])[1]).map(Number));
+  const s = maxNo(/^xl\/worksheets\/sheet(\d+)\.xml$/) + 1;
+  const d = maxNo(/^xl\/drawings\/drawing(\d+)\.xml$/) + 1;
+  const m = maxNo(/^xl\/media\/image(\d+)\.png$/) + 1;
+  const sheetCount = (wb.match(/<sheet /g) || []).length;
+  const sheetId = Math.max(0, ...[...wb.matchAll(/sheetId="(\d+)"/g)].map(x => Number(x[1]))) + 1;
+  const rid = `rIdSPC${s}`;
+
+  files.push({ name: `xl/worksheets/sheet${s}.xml`, data: get(filled, 'xl/worksheets/sheet1.xml').data });
+  files.push({ name: `xl/worksheets/_rels/sheet${s}.xml.rels`,
+    data: enc.encode(text(filled, 'xl/worksheets/_rels/sheet1.xml.rels').replace('/xl/drawings/drawing1.xml', `/xl/drawings/drawing${d}.xml`)) });
+  files.push({ name: `xl/drawings/drawing${d}.xml`, data: get(filled, 'xl/drawings/drawing1.xml').data });
+  files.push({ name: `xl/drawings/_rels/drawing${d}.xml.rels`,
+    data: enc.encode(text(filled, 'xl/drawings/_rels/drawing1.xml.rels')
+      .replace('/xl/media/image1.png', `/xl/media/image${m}.png`).replace('/xl/media/image2.png', `/xl/media/image${m + 1}.png`)) });
+  files.push({ name: `xl/media/image${m}.png`, data: get(filled, 'xl/media/image1.png').data });
+  files.push({ name: `xl/media/image${m + 1}.png`, data: get(filled, 'xl/media/image2.png').data });
+
+  const esc = xmlEsc(name);
+  wb = wb.replace('</sheets>',
+    `<sheet xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" name="${esc}" sheetId="${sheetId}" state="visible" r:id="${rid}"/></sheets>`);
+  const printArea = `<definedName name="_xlnm.Print_Area" localSheetId="${sheetCount}">'${esc.replace(/'/g, "''")}'!$A$1:$AE$48</definedName>`;
+  wb = wb.includes('</definedNames>') ? wb.replace('</definedNames>', printArea + '</definedNames>')
+    : wb.replace('</sheets>', `</sheets><definedNames>${printArea}</definedNames>`);
+  wb = wb.replace(/activeTab="\d+"/, `activeTab="${sheetCount}"`);       // 열면 새 시트가 보이도록
+  setText(files, 'xl/workbook.xml', wb);
+
+  setText(files, 'xl/_rels/workbook.xml.rels', text(files, 'xl/_rels/workbook.xml.rels').replace('</Relationships>',
+    `<Relationship Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="/xl/worksheets/sheet${s}.xml" Id="${rid}"/></Relationships>`));
+  setText(files, '[Content_Types].xml', text(files, '[Content_Types].xml').replace('</Types>',
+    `<Override PartName="/xl/worksheets/sheet${s}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>` +
+    `<Override PartName="/xl/drawings/drawing${d}.xml" ContentType="application/vnd.openxmlformats-officedocument.drawing+xml"/></Types>`));
+  return { blob: await zipBytes(files), sheetName: name };
+}
+
+// 조성 이름 → 파일 이름 (윈도우에서 못 쓰는 글자 제거)
+function spcFileName(title) {
+  return (String(title).replace(/[\\/:*?"<>|]+/g, '_').trim() || 'SPC') + '.xlsx';
 }
 
 // 엑셀 시트 이름: 31자 이내, \ / ? * [ ] : 사용 불가
@@ -2565,14 +2631,14 @@ async function saveToCsvOnce() {
   const histName = lastCharts.hist ? `${id}_히스토그램.png` : '';
   const xbarrName = lastCharts.xbarr ? `${id}_XbarR.png` : '';
   const dataCols = lastRecord._dataCols;
-  const spcName = dataCols.length <= SPC_MAX_LOTS ? `${id}.xlsx` : '';
+  const spcName = dataCols.length <= SPC_MAX_LOTS ? spcFileName(lastRecord['제목(조성)']) : '';
   const rec = Object.assign({}, lastRecord, {
     '기록ID': id,
     '저장일시': `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`,
     '작성자': author,
     '그래프(히스토그램)': histName ? `${IMG_DIR}/${histName}` : '',
     '그래프(XbarR)': xbarrName ? `${IMG_DIR}/${xbarrName}` : '',
-    'SPC파일': spcName ? `${SPC_DIR}/${spcName}` : ''
+    'SPC파일': ''
   });
 
   // 측정데이터 CSV: 값 하나가 한 줄 (기록ID, 조성, Lot, 순번, 값) → 엑셀 SPC 파일이 읽기 쉬운 형태
@@ -2588,20 +2654,32 @@ async function saveToCsvOnce() {
     const xbarrBlob = lastCharts.xbarr ? await chartToPngBlob(lastCharts.xbarr) : null;
     if (histName) await writeBlob(imgDirHandle, histName, histBlob);
     if (xbarrName) await writeBlob(imgDirHandle, xbarrName, xbarrBlob);
+    let spcSheet = '';
     if (spcName) {
+      // 조성별 SPC 파일 하나에 시트 추가 (없으면 새로 만듦)
       const spcDir = await dirHandle.getDirectoryHandle(SPC_DIR, { create: true });
-      const xlsx = await buildSpcXlsx(spcValues(rec, lastNumbers, dataCols, lastCharts.xbarr),
+      let existing = null;
+      try { existing = await (await (await spcDir.getFileHandle(spcName)).getFile()).arrayBuffer(); } catch (e) { existing = null; }
+      if (existing && existing.byteLength === 0) existing = null;
+      const out = await appendSpcSheet(existing, spcValues(rec, lastNumbers, dataCols, lastCharts.xbarr),
         spcSheetName(rec['제목(조성)'], dataCols), histBlob, xbarrBlob);
-      await writeBlob(spcDir, spcName, xlsx);
+      try {
+        await writeBlob(spcDir, spcName, out.blob);
+      } catch (e) {
+        throw new Error(`SPC 파일(${SPC_DIR}\\${spcName})을 저장하지 못했습니다. 다른 사람이 엑셀에서 이 파일을 열어두었다면 닫은 뒤 다시 저장해주세요.\n(${e.message})`);
+      }
+      spcSheet = out.sheetName;
+      rec['SPC파일'] = `${SPC_DIR}/${spcName}#${spcSheet}`;
     }
     await appendCsvRows(dataHandle, DATA_COLUMNS, dataRows);
     await appendCsvRows(csvHandle, CSV_COLUMNS, [rec]);
     await refreshRecords(false);
     alert(`공용 폴더에 저장했습니다.\n제목: ${rec['제목(조성)']}\nJob: ${rec['Job(Lot)']}\n\n- ${RESULT_CSV}\n- ${DATA_CSV} (${dataRows.length}개 값)` +
       (histName ? `\n- ${IMG_DIR}\\${histName}` : '') + (xbarrName ? `\n- ${IMG_DIR}\\${xbarrName}` : '') +
-      (spcName ? `\n- ${SPC_DIR}\\${spcName}  (SPC 엑셀)` : `\n\n※ Lot 이 ${SPC_MAX_LOTS}개를 넘어 SPC 엑셀은 만들지 않았습니다. (SPC 양식 Lot 칸 ${SPC_MAX_LOTS}개)`));
+      (spcName ? `\n- ${SPC_DIR}\\${spcName}  → 시트 '${spcSheet}' 추가` : `\n\n※ Lot 이 ${SPC_MAX_LOTS}개를 넘어 SPC 엑셀은 만들지 않았습니다. (SPC 양식 Lot 칸 ${SPC_MAX_LOTS}개)`));
   } catch (e) {
     console.error(e);
+    if (/^SPC 파일/.test(e.message)) { alert('저장에 실패했습니다.\n\n' + e.message); return; }
     const locked = /NoModification|InvalidState|lock|access/i.test(e.name + ' ' + e.message);
     alert('저장에 실패했습니다.' + (locked
       ? '\n\n다른 사람이 엑셀에서 CSV 파일을 직접 열어두면 저장할 수 없습니다.\n엑셀에서 CSV 파일을 닫은 뒤 다시 시도해주세요. (SPC 엑셀 파일은 열어두어도 됩니다)'
@@ -2663,7 +2741,7 @@ async function downloadSpc(index) {
   const path = csvRecords[index]['SPC파일'] || '';
   try {
     const spcDir = await dirHandle.getDirectoryHandle(SPC_DIR);
-    const file = await (await spcDir.getFileHandle(path.split(/[\\/]/).pop())).getFile();
+    const file = await (await spcDir.getFileHandle(path.split('#')[0].split(/[\\/]/).pop())).getFile();
     const link = document.createElement('a');
     link.href = URL.createObjectURL(file);
     link.download = file.name;

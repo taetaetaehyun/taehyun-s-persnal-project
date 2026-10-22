@@ -135,10 +135,29 @@ def build(src, out):
             decl = "".join(f' xmlns:{k}="{v}"' for k, v in ns.items() if f"xmlns:{k}=" not in title)
             x = x.replace("</wsDr>", title.replace("<xdr:twoCellAnchor", "<xdr:twoCellAnchor" + decl, 1) + "</wsDr>")
             data = x.encode("utf-8")
+        elif item.filename == "xl/worksheets/sheet1.xml":
+            data = fix_data_cf(data.decode("utf-8")).encode("utf-8")
         zout.writestr(item, data)
     zout.close()
     open(out, "wb").write(zout_buf.getvalue())
     return zout_buf.getvalue()
+
+
+def fix_data_cf(x):
+    """측정 Data 칸(G7:AE26)의 조건부 서식을 '규격(LSL~USL) 밖이면 빨간 굵은 글씨' 한 가지로 통일.
+    원본에는 열마다 고정값(3495~3637), MAX/MIN, 빈칸 참조 등 서로 다른 규칙이 남아 있었음."""
+    blocks = re.findall(r"<conditionalFormatting .*?</conditionalFormatting>", x, re.S)
+    data_blocks = [b for b in blocks if re.search(r'sqref="[^"]*\b[A-Z]{1,2}7:', b)]
+    red = re.search(r'dxfId="(\d+)"', [b for b in blocks if 'sqref="C32"' in b][0]).group(1)
+    for b in data_blocks:
+        x = x.replace(b, "", 1)
+    v = "G7"
+    f = (f"AND(ISNUMBER({v}),ISNUMBER($C$21),OR(AND(ISNUMBER($C$25),{v}&lt;$C$21-$C$25),"
+         f"AND(ISNUMBER($C$23),{v}&gt;$C$21+$C$23)))")
+    rule = (f'<conditionalFormatting sqref="G7:AE26"><cfRule type="expression" priority="1" dxfId="{red}">'
+            f"<formula>{f}</formula></cfRule></conditionalFormatting>")
+    i = x.index("<conditionalFormatting ")
+    return x[:i] + rule + x[i:]
 
 
 def embed(html_path, data):

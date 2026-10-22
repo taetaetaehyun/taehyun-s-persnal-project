@@ -1521,6 +1521,8 @@ function computeXbarR(input, lsl, usl) {
   try { return { state: buildXbarR(sgs, labels, opts) }; } catch (err) { return { error: err.message }; }
 }
 
+const lastOf = a => a[a.length - 1];
+
 function xbarrDecimals(s) {
   return Math.max(2, Math.min(6, 1 - Math.floor(Math.log10(Math.max(s.sigma, 1e-12)))));
 }
@@ -1531,8 +1533,8 @@ function xbarrTexts(s) {
   const d = xbarrDecimals(s);
   const f = v => (v === null || !isFinite(v) ? '*' : v.toFixed(d));
   return {
-    xU: s.equal ? f(s.xU[0]) : '부분군별', xC: f(s.xbb), xL: s.equal ? f(s.xL[0]) : '부분군별',
-    rU: s.equal ? f(s.rU[0]) : '부분군별', rC: s.equal ? f(s.rbar) : f(avg(s.rC)), rUsl: f(s.rUsl),
+    xU: f(lastOf(s.xU)), xC: f(s.xbb), xL: f(lastOf(s.xL)),
+    rU: f(lastOf(s.rU)), rC: s.equal ? f(s.rbar) : f(lastOf(s.rC)), rUsl: f(s.rUsl),
     n: s.equal ? `${s.sizes[0]} / ${s.sizes.length}` : `${Math.min(...s.sizes)}~${Math.max(...s.sizes)} / ${s.sizes.length}`,
     consts: s.consts ? `${s.consts.A2.toFixed(3)} / ${s.consts.D4.toFixed(3)}` : '부분군별 적용',
     xOut: s.xOut.filter(Boolean).length, rOut: s.rOut.filter(Boolean).length
@@ -2291,9 +2293,10 @@ function spcValues(rec, nums, dataCols, xbarrState) {
   }
   v.PPM = n(nums.ppmWithin); v.CPK = n(nums.cpk); v.CPU = n(nums.cpu); v.CPL = n(nums.cpl); v.CP = n(nums.cp);
   v.MAX = n(nums.max); v.MIN = n(nums.min); v.MEAN = n(nums.mean); v.SIGMA = n(nums.stdWithin);
-  const eq = xbarrState && xbarrState.equal;
-  v.X_UCL = eq ? xbarrState.xU[0] : ''; v.X_CL = xbarrState ? xbarrState.xbb : ''; v.X_LCL = eq ? xbarrState.xL[0] : '';
-  v.R_UCL = eq ? xbarrState.rU[0] : ''; v.R_CL = xbarrState ? (eq ? xbarrState.rbar : avg(xbarrState.rC)) : '';
+  // 부분군 크기가 달라도 그래프 오른쪽 끝에 적힌 값(마지막 부분군 기준)을 그대로 기록
+  const xs = xbarrState;
+  v.X_UCL = xs ? lastOf(xs.xU) : ''; v.X_CL = xs ? xs.xbb : ''; v.X_LCL = xs ? lastOf(xs.xL) : '';
+  v.R_UCL = xs ? lastOf(xs.rU) : ''; v.R_CL = xs ? (xs.equal ? xs.rbar : lastOf(xs.rC)) : '';
   return v;
 }
 

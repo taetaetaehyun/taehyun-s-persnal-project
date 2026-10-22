@@ -538,7 +538,7 @@
 
   <div class="share-section">
     <h2>공유 기록 (공용 폴더)</h2>
-    <div class="hint" style="margin:0 0 6px 0;">※ [결과 저장]을 누르면 공용 폴더에 결과(공정능력_결과기록.csv), 측정 데이터(공정능력_측정데이터.csv), 그래프 PNG(그래프 폴더), SPC 엑셀(SPC 폴더)이 함께 저장됩니다. Chrome 또는 Edge 에서 사용하세요.<br>
+    <div class="hint" style="margin:0 0 6px 0;">※ [결과 저장]을 누르면 공용 폴더에 결과와 측정 데이터(공정능력_결과기록.csv - 모든 조성이 함께 쓰는 파일 하나), 그래프 PNG(그래프 폴더), 조성별 SPC 엑셀(SPC 폴더)이 함께 저장됩니다. Chrome 또는 Edge 에서 사용하세요.<br>
       ※ 처음 한 번 [공용 폴더 연결]로 아래 <b>2026 폴더</b>를 선택하면, 다음부터는 [허용]만 누르면 됩니다. 파일이 없으면 자동으로 만들어집니다.</div>
     <div class="share-path" id="sharePathText"></div>
     <div class="share-bar">
@@ -2149,13 +2149,11 @@ function saveFullReport() {
 // =====================================================================
 const SHARE_PATH = '\\\\AAS-PTK-CERAMIC\\ASKR_Production\\01_MFG-line\\00. 공정관리\\01. Element Line\\09. 전반\\전반\\Chip\\선행,양산data\\2026';
 const RESULT_CSV = '공정능력_결과기록.csv';
-const DATA_CSV = '공정능력_측정데이터.csv';
 const IMG_DIR = '그래프';
 const SPEC_FIELDS = [
   ['specCustomer', '고객명'], ['specProduct', '품명'], ['specProcess', '공정명'],
   ['specItem', '항목'], ['specWorker', '작업자'], ['specDate', '측정일자']
 ];
-const DATA_COLUMNS = ['기록ID', '저장일시', '제목(조성)', 'Lot', '순번', '값'];
 const CSV_COLUMNS = [
   '기록ID', '저장일시', '작성자', '제목(조성)', 'Job(Lot)', '고객명', '품명', '공정명', '항목', '작업자', '측정일자', '데이터배열', '부분군(개수x크기)', '군내추정방법', '불편화상수',
   'LSL', 'Target', 'USL', 'N', '평균', 'StDev(전체)', 'StDev(군내)',
@@ -2172,7 +2170,6 @@ const METHOD_NAMES = { pooled: '합동표준편차', rbar: 'Rbar', sbar: 'Sbar' 
 let lastRecord = null;   // 마지막 분석 결과 (CSV 한 줄)
 let dirHandle = null;    // 연결된 공용 폴더
 let csvHandle = null;    // 폴더 안 결과 CSV
-let dataHandle = null;   // 폴더 안 측정데이터 CSV
 let imgDirHandle = null; // 폴더 안 그래프 폴더
 let lastCharts = { hist: null, xbarr: null };   // 저장할 그래프
 let lastNumbers = null;  // SPC 파일에 넣을 숫자 (반올림 전)
@@ -2531,10 +2528,9 @@ async function ensurePermission(askUser) {
   return await dirHandle.requestPermission(opts) === 'granted';
 }
 
-// 폴더 안의 결과 CSV / 측정데이터 CSV / 그래프 폴더 (없으면 만듦)
+// 폴더 안의 결과 CSV (모든 조성 공용, 없을 때만 만듦) / 그래프 폴더
 async function openShareFiles() {
   csvHandle = await dirHandle.getFileHandle(RESULT_CSV, { create: true });
-  dataHandle = await dirHandle.getFileHandle(DATA_CSV, { create: true });
   imgDirHandle = await dirHandle.getDirectoryHandle(IMG_DIR, { create: true });
 }
 
@@ -2641,12 +2637,6 @@ async function saveToCsvOnce() {
     'SPC파일': ''
   });
 
-  // 측정데이터 CSV: 값 하나가 한 줄 (기록ID, 조성, Lot, 순번, 값) → 엑셀 SPC 파일이 읽기 쉬운 형태
-  const dataRows = [];
-  lastRecord._dataCols.forEach(col => col.values.forEach((v, i) => {
-    if (v === '' || v === '*') return;
-    dataRows.push({ '기록ID': id, '저장일시': rec['저장일시'], '제목(조성)': rec['제목(조성)'], 'Lot': col.name, '순번': i + 1, '값': v });
-  }));
 
   try {
     await openShareFiles();
@@ -2671,10 +2661,9 @@ async function saveToCsvOnce() {
       spcSheet = out.sheetName;
       rec['SPC파일'] = `${SPC_DIR}/${spcName}#${spcSheet}`;
     }
-    await appendCsvRows(dataHandle, DATA_COLUMNS, dataRows);
     await appendCsvRows(csvHandle, CSV_COLUMNS, [rec]);
     await refreshRecords(false);
-    alert(`공용 폴더에 저장했습니다.\n제목: ${rec['제목(조성)']}\nJob: ${rec['Job(Lot)']}\n\n- ${RESULT_CSV}\n- ${DATA_CSV} (${dataRows.length}개 값)` +
+    alert(`공용 폴더에 저장했습니다.\n제목: ${rec['제목(조성)']}\nJob: ${rec['Job(Lot)']}\n\n- ${RESULT_CSV}` +
       (histName ? `\n- ${IMG_DIR}\\${histName}` : '') + (xbarrName ? `\n- ${IMG_DIR}\\${xbarrName}` : '') +
       (spcName ? `\n- ${SPC_DIR}\\${spcName}  → 시트 '${spcSheet}' 추가` : `\n\n※ Lot 이 ${SPC_MAX_LOTS}개를 넘어 SPC 엑셀은 만들지 않았습니다. (SPC 양식 Lot 칸 ${SPC_MAX_LOTS}개)`));
   } catch (e) {

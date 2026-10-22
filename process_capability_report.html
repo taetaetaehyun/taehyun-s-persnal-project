@@ -282,6 +282,7 @@
   .record-table td { padding: 6px 8px; border-bottom: 1px solid #f0f1f4; }
   .record-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
   .record-table td.empty { text-align: center; color: #6b7280; padding: 16px; }
+  .record-table button.del { background: #fff1f1; border-color: #f3c2c2; color: #c0392b; }
   .record-table button {
     background: #eef2ff; border: 1px solid #c7d2fe; color: #3730a3; border-radius: 5px;
     padding: 3px 8px; font-size: 12px; cursor: pointer; white-space: nowrap;
@@ -2640,6 +2641,11 @@ async function saveToCsvOnce() {
 
   try {
     await openShareFiles();
+    // 같은 조성 + 이전 기록의 Lot 이 이번 Lot 에 모두 들어 있으면 (예: 416Y~428Y → 416Y~429Y) 이전 기록을 대체
+    const newLots = new Set(dataCols.map(c => c.name));
+    const { records: existingRecs } = await readCsvFile();
+    const replaced = existingRecs.filter(r => r['제목(조성)'] === rec['제목(조성)'] &&
+      recordLots(r).length > 0 && recordLots(r).every(l => newLots.has(l)));
     const histBlob = lastCharts.hist ? await chartToPngBlob(lastCharts.hist) : null;
     const xbarrBlob = lastCharts.xbarr ? await chartToPngBlob(lastCharts.xbarr) : null;
     if (histName) await writeBlob(imgDirHandle, histName, histBlob);
@@ -2651,6 +2657,8 @@ async function saveToCsvOnce() {
       let existing = null;
       try { existing = await (await (await spcDir.getFileHandle(spcName)).getFile()).arrayBuffer(); } catch (e) { existing = null; }
       if (existing && existing.byteLength === 0) existing = null;
+      const oldSheets = spcSheetsByFile(replaced)[spcName] || [];
+      if (existing && oldSheets.length) existing = (await removeSpcSheets(existing, oldSheets)).buf;
       const out = await appendSpcSheet(existing, spcValues(rec, lastNumbers, dataCols, lastCharts.xbarr),
         spcSheetName(rec['제목(조성)'], dataCols), histBlob, xbarrBlob);
       try {
@@ -2661,9 +2669,15 @@ async function saveToCsvOnce() {
       spcSheet = out.sheetName;
       rec['SPC파일'] = `${SPC_DIR}/${spcName}#${spcSheet}`;
     }
-    await appendCsvRows(csvHandle, CSV_COLUMNS, [rec]);
+    if (replaced.length) {
+      for (const r of replaced) await removeRecordImages(r);
+      await rewriteCsv(csvHandle, r => !replaced.some(old => sameRecord(r, old)), [rec]);
+    } else {
+      await appendCsvRows(csvHandle, CSV_COLUMNS, [rec]);
+    }
     await refreshRecords(false);
-    alert(`공용 폴더에 저장했습니다.\n제목: ${rec['제목(조성)']}\nJob: ${rec['Job(Lot)']}\n\n- ${RESULT_CSV}` +
+    alert(`공용 폴더에 저장했습니다.\n제목: ${rec['제목(조성)']}\nLot: ${lotRangeText(rec)}\n\n- ${RESULT_CSV}` +
+      (replaced.length ? `\n- 이전 기록 ${replaced.map(lotRangeText).join(', ')} 은(는) 이번 기록으로 대체되어 삭제했습니다.` : '') +
       (histName ? `\n- ${IMG_DIR}\\${histName}` : '') + (xbarrName ? `\n- ${IMG_DIR}\\${xbarrName}` : '') +
       (spcName ? `\n- ${SPC_DIR}\\${spcName}  → 시트 '${spcSheet}' 추가` : `\n\n※ Lot 이 ${SPC_MAX_LOTS}개를 넘어 SPC 엑셀은 만들지 않았습니다. (SPC 양식 Lot 칸 ${SPC_MAX_LOTS}개)`));
   } catch (e) {
@@ -2671,7 +2685,7 @@ async function saveToCsvOnce() {
     if (/^SPC 파일/.test(e.message)) { alert('저장에 실패했습니다.\n\n' + e.message); return; }
     const locked = /NoModification|InvalidState|lock|access/i.test(e.name + ' ' + e.message);
     alert('저장에 실패했습니다.' + (locked
-      ? '\n\n다른 사람이 엑셀에서 CSV 파일을 직접 열어두면 저장할 수 없습니다.\n엑셀에서 CSV 파일을 닫은 뒤 다시 시도해주세요. (SPC 엑셀 파일은 열어두어도 됩니다)'
+      ? '\n\n다른 사람이 엑셀에서 CSV 파일을 직접 열어두면 저장할 수 없습니다.\n엑셀에서 CSV 파일을 닫은 뒤 다시 시도해주세요.'
       : '\n\n' + e.message));
   }
 }
@@ -2689,6 +2703,142 @@ function downloadRecordCsv(author) {
   alert('이 브라우저는 공용 CSV 직접 저장을 지원하지 않아 결과를 파일로 내려받았습니다.\nChrome 또는 Edge 사용을 권장합니다.');
 }
 
+// ---------- 기록 관리 (삭제 / 이어서 저장할 때 이전 기록 대체) ----------
+
+// Lot 목록 (CSV 의 'Job(Lot)' = "416Y, 417Y, …")
+const recordLots = r => String(r['Job(Lot)'] || '').split(',').map(s => s.trim()).filter(Boolean);
+
+// 화면 표시용: 416Y~428Y
+function lotRangeText(r) {
+  const lots = recordLots(r);
+  if (lots.length <= 1) return lots[0] || '';
+  return `${lots[0]}~${lots[lots.length - 1]}`;
+}
+
+const sameRecord = (a, b) => (a['기록ID'] && b['기록ID'])
+  ? a['기록ID'] === b['기록ID']
+  : a['저장일시'] === b['저장일시'] && a['제목(조성)'] === b['제목(조성)'] && a['Job(Lot)'] === b['Job(Lot)'];
+
+// SPC 엑셀에서 시트 지우기 → 남은 시트가 없으면 null
+async function removeSpcSheets(buf, sheetNames) {
+  const files = await unzipBytes(buf);
+  const dec = new TextDecoder(), enc = new TextEncoder();
+  const get = name => files.find(f => f.name === name);
+  const text = name => (get(name) ? dec.decode(get(name).data) : '');
+  const drop = name => { const i = files.findIndex(f => f.name === name); if (i >= 0) files.splice(i, 1); };
+  let wb = text('xl/workbook.xml'), rels = text('xl/_rels/workbook.xml.rels'), types = text('[Content_Types].xml');
+  const wanted = new Set(sheetNames.map(n => n.toLowerCase()));
+
+  let sheets = [...wb.matchAll(/<sheet\b[^>]*\/>/g)].map(m => ({
+    xml: m[0], name: xmlUnesc((/ name="([^"]*)"/.exec(m[0]) || [])[1] || ''), rid: (/ r:id="([^"]*)"/.exec(m[0]) || [])[1]
+  }));
+  let removed = 0;
+  for (let idx = sheets.length - 1; idx >= 0; idx--) {
+    const sh = sheets[idx];
+    if (!wanted.has(sh.name.toLowerCase())) continue;
+    const relXml = (new RegExp(`<Relationship [^>]*Id="${sh.rid}"[^>]*/>`).exec(rels) || [''])[0];
+    const target = ((/Target="([^"]*)"/.exec(relXml) || [])[1] || '').replace(/^\//, '').replace(/^(?!xl\/)/, 'xl/');
+    const sheetRels = target.replace('worksheets/', 'worksheets/_rels/') + '.rels';
+    const drawing = ((/Target="([^"]*drawing\d+\.xml)"/.exec(text(sheetRels)) || [])[1] || '').replace(/^\//, '');
+    if (drawing) {
+      const drawingRels = drawing.replace('drawings/', 'drawings/_rels/') + '.rels';
+      [...text(drawingRels).matchAll(/Target="([^"]*\.png)"/g)].forEach(m => drop(m[1].replace(/^\//, '')));
+      drop(drawing); drop(drawingRels);
+      types = types.replace(new RegExp(`<Override PartName="/${drawing}"[^>]*/>`), '');
+    }
+    drop(target); drop(sheetRels);
+    types = types.replace(new RegExp(`<Override PartName="/${target}"[^>]*/>`), '');
+    rels = rels.replace(relXml, '');
+    wb = wb.replace(sh.xml, '');
+    // 인쇄 영역: 지운 시트 것은 빼고, 뒤 시트 번호는 하나씩 당김
+    wb = wb.replace(new RegExp(`<definedName [^>]*localSheetId="${idx}"[^>]*>[^<]*</definedName>`, 'g'), '');
+    wb = wb.replace(/localSheetId="(\d+)"/g, (m, n) => `localSheetId="${Number(n) > idx ? Number(n) - 1 : n}"`);
+    sheets.splice(idx, 1);
+    removed++;
+  }
+  if (!removed) return { buf, removed: 0 };
+  if (!sheets.length) return { buf: null, removed };
+  wb = wb.replace('<definedNames></definedNames>', '');
+  wb = wb.replace(/activeTab="\d+"/, `activeTab="${sheets.length - 1}"`).replace(/firstSheet="\d+"/, 'firstSheet="0"');
+  get('xl/workbook.xml').data = enc.encode(wb);
+  get('xl/_rels/workbook.xml.rels').data = enc.encode(rels);
+  get('[Content_Types].xml').data = enc.encode(types);
+  return { buf: await (await zipBytes(files)).arrayBuffer(), removed };
+}
+
+// 결과 CSV 다시 쓰기: keep(rec) 가 false 인 줄은 빼고, addRecs 를 끝에 붙임
+async function rewriteCsv(handle, keep, addRecs) {
+  const file = await handle.getFile();
+  let all = await file.text();
+  if (all.charCodeAt(0) === 0xFEFF) all = all.slice(1);
+  const rows = parseCsv(all);
+  let header = rows.length ? rows[0] : CSV_COLUMNS.slice();
+  const missing = CSV_COLUMNS.filter(h => !header.map(canonColumn).includes(h));
+  header = header.concat(missing);
+  const out = [header.map(csvEscape).join(',')];
+  rows.slice(1).forEach(r => {
+    const rec = {};
+    header.forEach((h, i) => { rec[canonColumn(h)] = r[i] || ''; });
+    if (keep(rec)) out.push(header.map((h, i) => csvEscape(r[i] || '')).join(','));
+  });
+  addRecs.forEach(rec => out.push(header.map(h => csvEscape(rec[canonColumn(h)])).join(',')));
+  const w = await handle.createWritable();
+  await w.write('﻿' + out.join('\r\n') + '\r\n');
+  await w.close();
+}
+
+// 기록에 딸린 그래프 PNG 지우기
+async function removeRecordImages(r) {
+  for (const col of ['그래프(히스토그램)', '그래프(XbarR)']) {
+    const name = String(r[col] || '').split(/[\\/]/).pop();
+    if (!name) continue;
+    try { await imgDirHandle.removeEntry(name); } catch (e) { /* 이미 없음 */ }
+  }
+}
+
+// SPC 파일별로 지울 시트 이름 모으기 { 'P-127-K.xlsx': ['P-127-K 416Y~428Y', …] }
+function spcSheetsByFile(records) {
+  const map = {};
+  records.forEach(r => {
+    const [path, sheet] = String(r['SPC파일'] || '').split('#');
+    if (!path || !sheet) return;
+    const name = path.split(/[\\/]/).pop();
+    (map[name] = map[name] || []).push(sheet);
+  });
+  return map;
+}
+
+// 기록 삭제: CSV 줄 + 그래프 사진 + SPC 시트
+async function deleteRecord(index) {
+  const r = csvRecords[index];
+  if (!r) return;
+  if (!confirm(`'${r['제목(조성)']} ${lotRangeText(r)}' (${r['저장일시']}) 기록을 삭제할까요?\n\n결과기록 CSV 의 줄, 그래프 사진, SPC 엑셀의 시트가 함께 삭제되고 되돌릴 수 없습니다.`)) return;
+  if (!(await ensurePermission(true))) { alert('공용 폴더 접근이 허용되지 않았습니다.'); return; }
+  try {
+    await openShareFiles();
+    // 1) SPC 시트 (엑셀이 열려 있으면 여기서 실패 → 아무것도 지우지 않음)
+    const spcDir = await dirHandle.getDirectoryHandle(SPC_DIR, { create: true });
+    for (const [name, sheets] of Object.entries(spcSheetsByFile([r]))) {
+      let buf = null;
+      try { buf = await (await (await spcDir.getFileHandle(name)).getFile()).arrayBuffer(); } catch (e) { continue; }
+      const res = await removeSpcSheets(buf, sheets);
+      try {
+        if (res.buf === null) await spcDir.removeEntry(name);
+        else if (res.removed) await writeBlob(spcDir, name, new Blob([res.buf]));
+      } catch (e) {
+        throw new Error(`SPC 파일(${SPC_DIR}\\${name})을 고치지 못했습니다. 다른 사람이 엑셀에서 이 파일을 열어두었다면 닫은 뒤 다시 삭제해주세요.\n(${e.message})`);
+      }
+    }
+    // 2) 그래프 사진, 3) CSV 줄
+    await removeRecordImages(r);
+    await rewriteCsv(csvHandle, rec => !sameRecord(rec, r), []);
+    await refreshRecords(false);
+  } catch (e) {
+    console.error(e);
+    alert('삭제하지 못했습니다.\n\n' + e.message);
+  }
+}
+
 // ---------- 기록 목록 ----------
 function renderRecords() {
   const q = document.getElementById('recordSearch').value.trim().toLowerCase();
@@ -2699,47 +2849,13 @@ function renderRecords() {
     .slice(0, 200);
   const esc = s => String(s || '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const body = list.map(({ r, i }) => `<tr>
-      <td>${esc(r['저장일시'])}</td><td>${esc(r['제목(조성)'])}</td><td>${esc(r['Job(Lot)'])}</td>
+      <td>${esc(r['저장일시'])}</td><td>${esc(r['제목(조성)'])}</td><td style="white-space:nowrap;">${esc(lotRangeText(r))}</td>
       <td class="num">${esc(r['N'])}</td><td class="num">${esc(r['평균'])}</td>
       <td class="num">${esc(r['Cpk'])}</td><td class="num">${esc(r['Ppk'])}</td><td>${esc(r['작성자'])}</td>
-      <td>${r['원본데이터'] ? `<button type="button" onclick="loadRecord(${i})">불러오기</button>` : ''}
-        ${r['그래프(히스토그램)'] ? `<button type="button" onclick="openGraph(${i}, '그래프(히스토그램)')">히스토그램</button>` : ''}
-        ${r['그래프(XbarR)'] ? `<button type="button" onclick="openGraph(${i}, '그래프(XbarR)')">XbarR</button>` : ''}
-        ${r['SPC파일'] ? `<button type="button" onclick="downloadSpc(${i})">SPC 엑셀</button>` : ''}</td></tr>`).join('');
+      <td style="white-space:nowrap;">${r['원본데이터'] ? `<button type="button" onclick="loadRecord(${i})">불러오기</button>` : ''}
+        <button type="button" class="del" onclick="deleteRecord(${i})">삭제</button></td></tr>`).join('');
   document.getElementById('recordBody').innerHTML = body ||
     `<tr><td colspan="9" class="empty">${csvRecords.length ? '검색 결과가 없습니다.' : '저장된 기록이 없습니다.'}</td></tr>`;
-}
-
-// 저장된 그래프 PNG 를 새 탭으로 열기
-async function openGraph(index, column) {
-  const path = csvRecords[index][column] || '';
-  const name = path.split(/[\\/]/).pop();
-  const win = window.open('', '_blank');
-  try {
-    const fh = await imgDirHandle.getFileHandle(name);
-    const url = URL.createObjectURL(await fh.getFile());
-    if (win) win.location.href = url; else window.open(url, '_blank');
-  } catch (e) {
-    if (win) win.close();
-    alert('그래프 파일을 찾지 못했습니다: ' + path);
-  }
-}
-
-// 저장된 SPC 엑셀 파일 내려받기 (엑셀로 열기)
-async function downloadSpc(index) {
-  const path = csvRecords[index]['SPC파일'] || '';
-  try {
-    const spcDir = await dirHandle.getDirectoryHandle(SPC_DIR);
-    const file = await (await spcDir.getFileHandle(path.split('#')[0].split(/[\\/]/).pop())).getFile();
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(file);
-    link.download = file.name;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  } catch (e) {
-    alert('SPC 파일을 찾지 못했습니다: ' + path);
-  }
 }
 
 // 기록을 입력칸으로 되돌리고 다시 분석

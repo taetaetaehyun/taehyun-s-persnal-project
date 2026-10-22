@@ -364,11 +364,9 @@
     position: relative;
   }
   /* Xbar-R 모드: 상자들은 위에 나란히, 관리도는 아래에 전체 폭으로 */
-  .dashboard-grid.xbarr-mode { grid-template-columns: auto 1fr; }
-  .xbarr-mode .left-col { grid-column: 1; grid-row: 2; }
-  .xbarr-mode .right-col { grid-column: 2; grid-row: 2; flex-direction: row; align-items: flex-start; }
-  .xbarr-mode .chart-wrap { grid-column: 1 / -1; grid-row: 3; height: auto; }
-  .xbarr-box { display: none; width: 600px; }
+  /* Xbar-R 관리도: 대시보드 전체 폭 (높이는 그래프 비율로 자동) */
+  .chart-wrap.xbarr-wrap { grid-column: 1 / -1; height: auto; }
+  .xbarr-box { width: 600px; }
   .chart-wrap canvas {
     display: block;
     width: 100%;
@@ -453,15 +451,7 @@
     <div class="hint" style="margin:8px 0 0 0; color:#6b7280;">※ 부분군 크기 1 = 개별값(이동범위로 군내 표준편차 계산). 엑셀에서 여러 Lot 열을 붙여넣으면 "열(Lot) = 부분군"이 자동 선택됩니다.</div>
   </div>
 
-  <div class="field">
-    <label>차트 종류</label>
-    <select id="chartType">
-      <option value="histogram">히스토그램 (분포)</option>
-      <option value="boxplot">박스플롯 (Box Plot)</option>
-      <option value="xbarr">Xbar-R 관리도</option>
-    </select>
-  </div>
-  <div class="mt-dialog" id="xbarrOptions" style="display:none; margin-top:-6px;">
+  <div class="mt-dialog" id="xbarrOptions" style="margin-top:0;">
     <div class="mt-dialog-title">Xbar-R 관리도 설정</div>
     <div class="mt-sub" style="margin-left:0;">
       <span>부분군 기준
@@ -531,6 +521,10 @@
         <div class="data-row"><span>PPM Total</span><span id="ppmObsT">-</span><span id="ppmOvT">-</span><span id="ppmWiT">-</span></div>
       </div>
 
+      <div class="chart-wrap xbarr-wrap" id="xbarrWrap">
+        <canvas id="xbarrChart"></canvas>
+      </div>
+
       <div class="data-box perf-box xbarr-box" id="xbarrBox">
         <div class="data-box-title">Xbar-R 관리한계</div>
         <div class="data-row perf-head"><span></span><span>UCL</span><span>CL</span><span>LCL</span></div>
@@ -567,7 +561,8 @@
 
 <script>
 // 현재 그려진 차트 정보 (창 크기가 바뀌면 다시 그림)
-let chartState = null;
+let chartState = null;   // 히스토그램
+let xbarrState = null;   // Xbar-R 관리도
 
 const FONT = "Tahoma, 'Malgun Gothic', sans-serif";
 const SPEC_COLOR = '#c00000';
@@ -1095,10 +1090,6 @@ function setupSheet() {
   t.addEventListener('change', refreshColumnPickers);
   document.querySelectorAll('input[name="layout"]').forEach(i => i.addEventListener('change', updateLayoutUi));
   document.getElementById('subgroupSize').addEventListener('input', updateLayoutUi);
-  const chartSel = document.getElementById('chartType');
-  const syncChartUi = () => { document.getElementById('xbarrOptions').style.display = chartSel.value === 'xbarr' ? 'block' : 'none'; };
-  chartSel.addEventListener('change', syncChartUi);
-  syncChartUi();
   // 기본 데이터: C1~C3 에 1086Y~1088Y, "부분군 행 위치"로 C1~C3 선택
   DEFAULT_SHEET.forEach((col, c) => {
     nameInputs[c].value = col.name;
@@ -1317,19 +1308,13 @@ function analyzeData() {
   document.getElementById('saveToolbar').style.display = 'flex';
 
   const binWidth = binWidthInput ? parseFloat(binWidthInput) : null;
-  const chartType = document.getElementById('chartType').value;
-  const isXbarR = chartType === 'xbarr';
-  document.getElementById('dashboardGrid').classList.toggle('xbarr-mode', isXbarR);
-  document.getElementById('xbarrBox').style.display = isXbarR ? 'block' : 'none';
-  if (isXbarR) {
-    if (!xbarr.state) { alert(xbarr.error); return; }
-    chartState = xbarr.state;
-    showXbarRSummary(chartState);
-  } else if (chartType === 'boxplot') {
-    chartState = buildBoxPlot(groups, lsl, usl, target);
-  } else {
-    chartState = buildHistogram(data, mean, stdOverall, stdWithin, lsl, usl, target, binWidth);
-  }
+  // 히스토그램 + Xbar-R 관리도를 한 화면에 함께 표시
+  chartState = buildHistogram(data, mean, stdOverall, stdWithin, lsl, usl, target, binWidth);
+  xbarrState = xbarr.state || null;
+  document.getElementById('xbarrWrap').style.display = xbarrState ? 'block' : 'none';
+  document.getElementById('xbarrBox').style.display = xbarrState ? 'block' : 'none';
+  if (xbarrState) showXbarRSummary(xbarrState);
+  showXbarRNote(xbarrState ? '' : xbarr.error);
   redrawChart();
 }
 
@@ -1434,12 +1419,9 @@ function buildBoxPlot(groups, lsl, usl, target) {
 // =====================================================================
 //  차트 그리기 (canvas 직접 그리기)
 // =====================================================================
-function redrawChart() {
-  if (!chartState) return;
-  const canvas = document.getElementById('capChart');
+function drawOnCanvas(canvas, state, fixedHeight) {
   const w = canvas.clientWidth;
-  if (chartState.kind === 'xbarr') canvas.style.height = xbarrCanvasHeight(canvas.getContext('2d'), w, chartState) + 'px';
-  else canvas.style.height = '';
+  if (fixedHeight) canvas.style.height = fixedHeight(canvas.getContext('2d'), w) + 'px';
   const h = canvas.clientHeight;
   if (w === 0 || h === 0) return;
   const dpr = Math.max(window.devicePixelRatio || 1, 2);
@@ -1448,7 +1430,26 @@ function redrawChart() {
   const ctx = canvas.getContext('2d');
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, w, h);
-  renderChart(ctx, w, h, chartState);
+  renderChart(ctx, w, h, state);
+}
+
+function redrawChart() {
+  if (chartState) drawOnCanvas(document.getElementById('capChart'), chartState);
+  if (xbarrState) drawOnCanvas(document.getElementById('xbarrChart'), xbarrState, (ctx, w) => xbarrCanvasHeight(ctx, w, xbarrState));
+}
+
+// Xbar-R 을 그릴 수 없을 때 안내 (예: 개별값, Lot 열이 1개)
+function showXbarRNote(msg) {
+  let el = document.getElementById('xbarrNote');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'xbarrNote';
+    el.className = 'hint';
+    el.style.cssText = 'grid-column: 1 / -1; color:#6b7280; margin:0;';
+    document.getElementById('xbarrWrap').before(el);
+  }
+  el.innerText = msg ? '※ Xbar-R 관리도를 그리지 않았습니다: ' + msg.replace(/\n/g, ' ') : '';
+  el.style.display = msg ? 'block' : 'none';
 }
 
 window.addEventListener('resize', redrawChart);
@@ -2023,15 +2024,19 @@ function downloadCanvas(canvas, filename) {
 
 function saveChartOnly() {
   if (!chartState) { alert('먼저 분석을 실행해주세요.'); return; }
-  const src = document.getElementById('capChart');
-  const out = document.createElement('canvas');
-  out.width = src.width;
-  out.height = src.height;
-  const ctx = out.getContext('2d');
-  ctx.fillStyle = '#ffffff';
-  ctx.fillRect(0, 0, out.width, out.height);
-  ctx.drawImage(src, 0, 0);
-  downloadCanvas(out, `capability_chart_${timestampSuffix()}.png`);
+  const stamp = timestampSuffix();
+  [['capChart', `capability_histogram_${stamp}.png`], ['xbarrChart', `capability_xbarr_${stamp}.png`]].forEach(([id, name]) => {
+    const src = document.getElementById(id);
+    if (id === 'xbarrChart' && !xbarrState) return;
+    const out = document.createElement('canvas');
+    out.width = src.width;
+    out.height = src.height;
+    const ctx = out.getContext('2d');
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, out.width, out.height);
+    ctx.drawImage(src, 0, 0);
+    downloadCanvas(out, name);
+  });
 }
 
 function saveFullReport() {
@@ -2089,6 +2094,7 @@ function saveFullReport() {
 
     // 데이터 박스
     grid.querySelectorAll('.data-box').forEach(boxEl => {
+      if (boxEl.offsetParent === null) return;   // 숨긴 상자
       const r = rel(boxEl);
       ctx.fillStyle = '#ffffff';
       ctx.fillRect(r.x, r.y, r.w, r.h);
@@ -2116,15 +2122,18 @@ function saveFullReport() {
       });
     });
 
-    // 차트
-    const wrap = document.getElementById('chartWrap');
-    const wr = rel(wrap);
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(wr.x, wr.y, wr.w, wr.h);
-    ctx.strokeStyle = '#000000';
-    ctx.strokeRect(wr.x + 0.5, wr.y + 0.5, wr.w - 1, wr.h - 1);
-    const cr = rel(document.getElementById('capChart'));
-    ctx.drawImage(document.getElementById('capChart'), cr.x, cr.y, cr.w, cr.h);
+    // 차트 (히스토그램, Xbar-R)
+    grid.querySelectorAll('.chart-wrap').forEach(wrap => {
+      if (wrap.offsetParent === null) return;   // 숨긴 칸
+      const wr = rel(wrap);
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(wr.x, wr.y, wr.w, wr.h);
+      ctx.strokeStyle = '#000000';
+      ctx.strokeRect(wr.x + 0.5, wr.y + 0.5, wr.w - 1, wr.h - 1);
+      const cv = wrap.querySelector('canvas');
+      const cr = rel(cv);
+      ctx.drawImage(cv, cr.x, cr.y, cr.w, cr.h);
+    });
 
     downloadCanvas(out, `capability_report_${timestampSuffix()}.png`);
   } catch (err) {

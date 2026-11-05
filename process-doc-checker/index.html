@@ -1,0 +1,1206 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body>
+<title>공정자료 정합성 검사기</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+KR:wght@400;500;600;700&display=swap">
+<style>
+/* Layout: 작업지시서처럼 위→아래 2단계(자료 올리기 → 결과). 결과는 요약 → 수정 목록 → 매트릭스/매핑/상세 탭 */
+:root{
+  --bg:#eef2f4; --surface:#ffffff; --surface-2:#f6f8f9; --ink:#132029; --muted:#5a6a75; --line:#d3dce2;
+  --accent:#0d5a87; --accent-soft:#e1edf5; --on-accent:#ffffff;
+  --high:#b8322a; --mid:#b06d07; --low:#23798a; --info:#687985; --ok:#2b7a4b;
+  --font-ui:"IBM Plex Sans KR","Apple SD Gothic Neo","Malgun Gothic",system-ui,sans-serif;
+  --font-mono:"IBM Plex Mono",ui-monospace,"Cascadia Mono",Consolas,monospace;
+  --r:6px;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0e1519; --surface:#161f25; --surface-2:#1b262d; --ink:#e1e9ee; --muted:#93a3ad; --line:#2b3942;
+  --accent:#5aa8db; --accent-soft:#183243; --on-accent:#08141c;
+  --high:#ee6a5e; --mid:#e3a447; --low:#5bb8c8; --info:#8b9ba6; --ok:#5cc489; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0e1519; --surface:#161f25; --surface-2:#1b262d; --ink:#e1e9ee; --muted:#93a3ad; --line:#2b3942;
+  --accent:#5aa8db; --accent-soft:#183243; --on-accent:#08141c;
+  --high:#ee6a5e; --mid:#e3a447; --low:#5bb8c8; --info:#8b9ba6; --ok:#5cc489; color-scheme:dark}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{background:var(--bg);color:var(--ink);font-family:var(--font-ui);font-size:14px;line-height:1.55;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:0 48px}
+.wrap{max-width:1280px;margin:0 auto;display:grid;gap:28px}
+header.top{padding-block:28px 4px;display:grid;gap:6px}
+header.top .eyebrow{font-family:var(--font-mono);font-size:12px;letter-spacing:.08em;color:var(--accent);text-transform:uppercase}
+h1{font-size:clamp(22px,3.2vw,30px);line-height:1.2;margin:0;font-weight:700;text-wrap:balance}
+header.top p{margin:0;color:var(--muted);max-width:72ch}
+h2{font-size:17px;margin:0;font-weight:700;display:flex;gap:10px;align-items:baseline}
+h2 .step{font-family:var(--font-mono);font-size:12px;color:var(--accent);font-weight:500;letter-spacing:.06em}
+section{display:grid;gap:14px;min-width:0}
+section>*,#panel>*{min-width:0}
+td.op{min-width:130px}
+td.typ{min-width:120px}
+td.op .k{font-family:var(--font-mono);font-weight:500}
+.banner{border:1px dashed var(--accent);background:var(--accent-soft);border-radius:var(--r);padding:10px 14px;display:flex;gap:12px;flex-wrap:wrap;align-items:center;justify-content:space-between}
+.banner b{color:var(--accent)}
+.drop-all{border:1.5px dashed var(--line);border-radius:var(--r);padding:14px;text-align:center;color:var(--muted);background:var(--surface-2)}
+.drop-all.over,.slot.over{border-color:var(--accent);background:var(--accent-soft);color:var(--ink)}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:14px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:14px;display:grid;gap:10px;align-content:start;min-width:0}
+.card.base{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent) inset}
+.card-head{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.doc-tag{font-family:var(--font-mono);font-weight:500;font-size:13px;padding:2px 8px;border-radius:4px;background:var(--surface-2);border:1px solid var(--line)}
+.card .full{color:var(--muted);font-size:12.5px}
+.slot{border:1.5px dashed var(--line);border-radius:var(--r);padding:12px;display:grid;gap:4px;justify-items:start;cursor:pointer;background:var(--surface-2);min-width:0}
+.slot:focus-within{outline:2px solid var(--accent);outline-offset:2px}
+.slot .fname{font-weight:600;word-break:break-all}
+.slot .hint{color:var(--muted);font-size:12.5px}
+.slot input{position:absolute;width:1px;height:1px;opacity:0}
+.stats{display:flex;flex-wrap:wrap;gap:6px}
+.stat{font-size:12px;font-family:var(--font-mono);padding:1px 7px;border-radius:999px;border:1px solid var(--line);color:var(--muted);font-variant-numeric:tabular-nums}
+.stat.warn{color:var(--high);border-color:var(--high)}
+.switch{display:inline-flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;user-select:none;font-weight:600}
+.switch input{appearance:none;width:34px;height:20px;border-radius:999px;background:var(--line);position:relative;cursor:pointer;margin:0;transition:background .15s}
+.switch input::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:var(--surface);transition:transform .15s}
+.switch input:checked{background:var(--accent)}
+.switch input:checked::after{transform:translateX(14px)}
+.switch input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+details.cfg{border-top:1px solid var(--line);padding-top:8px}
+details.cfg summary{cursor:pointer;color:var(--muted);font-size:12.5px}
+.cfg-grid{display:grid;grid-template-columns:auto minmax(0,1fr);gap:6px 8px;align-items:center;margin-top:8px;font-size:12.5px}
+select,input[type=text],input[type=number],textarea{font:inherit;font-size:13px;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:4px;padding:4px 6px;min-width:0;max-width:100%}
+textarea{width:100%;resize:vertical}
+select:focus-visible,input:focus-visible,textarea:focus-visible,button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{font:inherit;font-size:12.5px;padding:2px 9px;border-radius:999px;border:1px solid var(--line);background:var(--surface);color:var(--ink);cursor:pointer}
+.chip[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+.chip .n{font-family:var(--font-mono);opacity:.75;margin-left:4px}
+button.btn{font:inherit;font-size:13px;font-weight:600;padding:6px 12px;border-radius:4px;border:1px solid var(--accent);background:var(--accent);color:var(--on-accent);cursor:pointer}
+button.btn.ghost{background:transparent;color:var(--accent)}
+.note{font-size:12.5px;color:var(--muted)}
+.basis{display:flex;flex-wrap:wrap;gap:8px 18px;align-items:center;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:10px 14px;font-size:13px}
+.basis b{font-weight:600}
+.basis .lbl{color:var(--muted);font-size:12px;letter-spacing:.04em}
+.summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
+.sum{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:12px 14px;display:grid;gap:8px;cursor:pointer;text-align:left;font:inherit;color:inherit}
+.sum[aria-pressed="true"]{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent) inset}
+.sum .t{display:flex;justify-content:space-between;align-items:center;gap:8px;font-weight:600}
+.sum .big{font-size:26px;font-weight:700;font-variant-numeric:tabular-nums;line-height:1}
+.sum .big small{font-size:12px;color:var(--muted);font-weight:500;margin-left:6px}
+.bar{display:flex;height:6px;border-radius:3px;overflow:hidden;background:var(--surface-2)}
+.bar i{display:block;height:100%}
+.legend{display:flex;flex-wrap:wrap;gap:4px 10px;font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:4px;vertical-align:1px}
+.s-high{--c:var(--high)} .s-mid{--c:var(--mid)} .s-low{--c:var(--low)} .s-info{--c:var(--info)} .s-ok{--c:var(--ok)}
+.tabs{display:flex;gap:2px;border-bottom:1px solid var(--line);overflow-x:auto}
+.tab{font:inherit;font-size:13.5px;font-weight:600;padding:8px 14px;border:0;background:none;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap}
+.tab[aria-selected="true"]{color:var(--accent);border-bottom-color:var(--accent)}
+.toolbar{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center}
+.toolbar .grow{flex:1 1 200px}
+.toolbar input[type=text]{width:100%}
+.tbl-wrap{overflow-x:auto;background:var(--surface);border:1px solid var(--line);border-radius:var(--r)}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th,td{padding:7px 10px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+th{font-size:12px;color:var(--muted);font-weight:600;background:var(--surface-2);position:sticky;top:0;white-space:nowrap}
+tr:last-child td{border-bottom:0}
+td.sev{border-left:4px solid var(--c);white-space:nowrap}
+.pill{display:inline-block;font-size:11.5px;font-weight:600;padding:1px 7px;border-radius:999px;color:var(--c);border:1px solid var(--c);white-space:nowrap}
+.mono{font-family:var(--font-mono);font-size:12px}
+.ref{font-family:var(--font-mono);font-size:12px;white-space:nowrap;color:var(--accent)}
+.cur{color:var(--muted)}
+.act{font-weight:500}
+.pre{white-space:pre-line}
+td.wide{min-width:220px}
+.empty{padding:28px;text-align:center;color:var(--muted)}
+.mx td{min-width:150px}
+.mx td.k{min-width:0;font-family:var(--font-mono);font-weight:500}
+.cell{border-left:3px solid var(--c);padding-left:8px;display:grid;gap:2px}
+.cell .nm{font-weight:500}
+.cell .meta{font-size:11.5px;color:var(--muted);font-family:var(--font-mono)}
+.ep{display:inline-block;font-family:var(--font-mono);font-size:11px;font-weight:500;color:var(--high);border:1px solid var(--high);border-radius:3px;padding:0 4px;margin-left:4px}
+.detail{display:grid;grid-template-columns:minmax(150px,220px) minmax(0,1fr);gap:14px}
+@media (max-width:720px){.detail{grid-template-columns:1fr}}
+.oplist{display:grid;gap:2px;align-content:start;max-height:70vh;overflow:auto;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:6px}
+.opbtn{font:inherit;font-size:13px;text-align:left;border:0;background:none;color:var(--ink);padding:6px 8px;border-radius:4px;cursor:pointer;display:flex;justify-content:space-between;gap:6px}
+.opbtn[aria-current="true"]{background:var(--accent-soft);color:var(--accent);font-weight:600}
+.opbtn .cnt{font-family:var(--font-mono);font-size:11.5px;color:var(--high)}
+.cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;min-width:0}
+.col{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:10px 12px;display:grid;gap:6px;align-content:start;min-width:0}
+.col h3{margin:0;font-size:13px;display:flex;justify-content:space-between;gap:6px;align-items:center}
+.col .pname{font-size:12.5px;color:var(--muted)}
+.it{border-left:3px solid var(--c);padding:2px 0 2px 8px;font-size:13px;word-break:break-word}
+.it .k{font-size:11px;color:var(--muted);font-family:var(--font-mono);margin-left:4px}
+.it.miss{color:var(--high)}
+.it.miss::before{content:"누락 · ";font-weight:600}
+.settings{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:10px 14px}
+.settings summary{cursor:pointer;font-weight:600;font-size:13.5px}
+.set-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px;margin-top:12px}
+.set-grid label{display:grid;gap:4px;font-size:12.5px;color:var(--muted)}
+.toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:8px 14px;border-radius:4px;font-size:13px;z-index:20}
+.loading{color:var(--accent);font-size:12.5px}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+
+<div class="wrap">
+  <header class="top">
+    <div class="eyebrow">PFD · Control Plan · PFMEA · Error Proof</div>
+    <h1>공정자료 정합성 검사기</h1>
+    <p>네 가지 공정 자료(Excel)를 올리고 기준 자료를 고르면, 나머지 자료에서 공정·관리항목·E/P 표기가 기준과 어긋나는 곳을 셀 위치와 함께 정리합니다. 파일은 브라우저 안에서만 읽고 어디에도 전송하지 않습니다.</p>
+  </header>
+
+  <section id="sec-upload">
+    <h2><span class="step">STEP 1</span>자료 올리기 · 기준 선택</h2>
+    <div id="demo-banner" class="banner" hidden>
+      <span><b>예시 데이터</b>를 보여 주는 중입니다. 실제 파일을 올리면 예시는 모두 지워집니다.</span>
+      <button class="btn ghost" id="btn-clear-demo" type="button">예시 지우기</button>
+    </div>
+    <div class="drop-all" id="drop-all">Excel 파일 4개를 여기에 한꺼번에 끌어 놓으면 파일명과 내용으로 종류를 자동 분류합니다. 개별 칸에 하나씩 올려도 됩니다.</div>
+    <div class="cards" id="cards"></div>
+    <details class="settings" id="settings">
+      <summary>검사 기준 설정</summary>
+      <div class="set-grid">
+        <label for="set-match">항목 일치로 볼 유사도 (0~1)
+          <input type="number" id="set-match" min="0.3" max="1" step="0.05"></label>
+        <label for="set-near">‘표현 차이’로 볼 최소 유사도 (이보다 낮으면 누락)
+          <input type="number" id="set-near" min="0.1" max="0.9" step="0.05"></label>
+        <label for="set-name">공정명 불일치 기준 유사도
+          <input type="number" id="set-name" min="0.1" max="0.95" step="0.05"></label>
+        <label for="set-ignore-items">비교에서 뺄 관리항목 키워드 (쉼표 구분)
+          <textarea id="set-ignore-items" rows="2"></textarea></label>
+        <label for="set-ignore-rows">PFD에서 건너뛸 행 이름 (쉼표 구분, 정확히 일치)
+          <textarea id="set-ignore-rows" rows="2"></textarea></label>
+        <label for="set-extra" style="display:flex;gap:8px;align-items:center;color:var(--ink)"><input type="checkbox" id="set-extra"> 기준에 없는 항목(참고)도 목록에 표시</label>
+      </div>
+    </details>
+  </section>
+
+  <section id="sec-result">
+    <h2><span class="step">STEP 2</span>검사 결과</h2>
+    <div class="basis" id="basis"></div>
+    <div class="summary" id="summary"></div>
+    <div class="tabs" role="tablist" id="tabs">
+      <button class="tab" role="tab" data-tab="issues" id="tab-issues">수정 목록</button>
+      <button class="tab" role="tab" data-tab="matrix" id="tab-matrix">공정 매트릭스</button>
+      <button class="tab" role="tab" data-tab="detail" id="tab-detail">공정별 상세</button>
+      <button class="tab" role="tab" data-tab="mapping" id="tab-mapping">공정 매핑</button>
+    </div>
+    <div id="panel"></div>
+  </section>
+</div>
+<div class="toast" id="toast" hidden></div>
+
+<script>
+'use strict';
+/* =========================================================
+   0. 상수
+   ========================================================= */
+const ORDER = ['pfd','cp','fmea','ep'];
+const DOC = {
+  pfd:{label:'PFD', full:'Process Flow Diagram (공정흐름도)'},
+  cp:{label:'CP', full:'Control Plan (관리계획서)'},
+  fmea:{label:'PFMEA', full:'Process FMEA'},
+  ep:{label:'E/P', full:'Error Proof 등록 대장'}
+};
+const SEV = {high:'수정 필요', mid:'확인 필요', low:'표기 차이', info:'참고'};
+const SEV_ORDER = {high:0, mid:1, low:2, info:3};
+const EP_RX = /(^|[^A-Za-z])E\s*\/\s*P(?![A-Za-z])|error[\s\-]*proof|실수\s*방지|poka[\s\-]*yoke|fool[\s\-]*proof|풀\s*프루프/i;
+
+const ROLES = {
+  pfd:[
+    {k:'op', l:'공정번호', req:1, rx:[/^op\b|op[\s.\-\/]*seq|operation\s*no|process\s*no|공정\s*(번호|no)/i]},
+    {k:'name', l:'공정명', req:1, rx:[/process\s*name|공정\s*명|작업\s*명/i, /process\s*classification|operation\s*desc|process\s*desc/i, /^operation$/i]},
+    {k:'product', l:'제품특성', rx:[/product\s*char|outputs|제품\s*특성/i]},
+    {k:'process', l:'공정특성', rx:[/control\s*char|process\s*char|inputs|공정\s*특성|관리\s*특성/i]},
+    {k:'ep', l:'E/P 열', rx:[/^e\s*\/\s*p$|error\s*proof|실수\s*방지/i]}
+  ],
+  cp:[
+    {k:'op', l:'공정번호', req:1, rx:[/process\s*no|op(eration)?\.?\s*no|공정\s*(번호|no)|^op$/i]},
+    {k:'name', l:'공정명', req:1, rx:[/process\s*name|공정\s*명|operation\s*(name|desc)|process\s*desc/i]},
+    {k:'equip', l:'설비', rx:[/equipment|machine|설비/i]},
+    {k:'no', l:'항목 No', rx:[/^no\.?$|항목\s*no/i]},
+    {k:'product', l:'제품특성', rx:[/^(product|제품)(\s*(char\w*|특성))?$/i]},
+    {k:'process', l:'공정특성', rx:[/^(process|공정)(\s*(char\w*|특성))?$/i]},
+    {k:'special', l:'특별특성', rx:[/special|key\s*char|특별\s*특성|^class/i]},
+    {k:'spec', l:'규격', rx:[/specification|tolerance|규격|관리\s*기준|management\s*standard/i]},
+    {k:'method', l:'측정방법', rx:[/check(ing)?\s*method|evaluation|measurement\s*tech|측정|평가\s*방법/i]},
+    {k:'freq', l:'주기', rx:[/^freq|frequency|주기/i]},
+    {k:'control', l:'관리방법', rx:[/control\s*method|관리\s*방법/i]},
+    {k:'reaction', l:'이상조치', rx:[/reaction|조치/i]},
+    {k:'ep', l:'E/P 열', rx:[/^e\s*\/\s*p$|error\s*proof|실수\s*방지/i]},
+    {k:'item', l:'관리항목(단일 열)', rx:[/관리\s*항목|management\s*item|characteristic/i]}
+  ],
+  fmea:[
+    {k:'op', l:'공정번호(별도 열)', rx:[/^op(eration)?\.?\s*(no|#)|공정\s*번호/i]},
+    {k:'step', l:'공정/기능', req:1, rx:[/process.*(step|function)|공정.*(단계|기능)|^process$|^item$|공정\s*명/i]},
+    {k:'req', l:'요구사항', rx:[/requirement|요구\s*사항/i]},
+    {k:'fm', l:'고장형태', rx:[/failure\s*mode|고장\s*형태/i]},
+    {k:'sev', l:'심각도', rx:[/severity|심각도/i]},
+    {k:'cls', l:'분류', rx:[/^classification$|^class$|^분류$/i]},
+    {k:'cause', l:'원인', rx:[/cause|원인/i]},
+    {k:'prev', l:'예방관리', rx:[/prevention|예방/i]},
+    {k:'det', l:'검출관리', rx:[/detection\s*control|관리\s*검출|검출\s*관리|current.*detect/i]}
+  ],
+  ep:[
+    {k:'no', l:'E/P 번호', req:1, rx:[/등록\s*no|e\s*\/?\s*p\s*(no|번호)|관리\s*번호|reg\w*\s*no/i]},
+    {k:'product', l:'고객/차종/품명', rx:[/품\s*명|차종|고객|product|model/i]},
+    {k:'equip', l:'설비명', rx:[/설비\s*명|equipment|machine/i]},
+    {k:'device', l:'E/P 장치명', rx:[/장치\s*명|device/i]},
+    {k:'process', l:'설치 공정', req:1, rx:[/설치\s*공정|공정\s*명|process|station/i]},
+    {k:'target', l:'검출대상', rx:[/검출\s*대상|detection\s*(target|item)|failure\s*mode|검출\s*내용/i]},
+    {k:'method', l:'검출방법', rx:[/검출\s*방법|detection\s*method/i]},
+    {k:'check', l:'유지관리 방법', rx:[/유지\s*관리|점검|maintenance/i]}
+  ]
+};
+
+/* 유사어 사전: 같은 그룹은 같은 단어로 취급 (영/한 혼용 대응) */
+const SYN = [
+  ['temperature','temp','온도'],['pressure','press','압력','압'],['solder','soldering','납땜','솔더링','솔더'],
+  ['iron','인두','인두기'],['assembly','assy','assemble','조립','안착'],['inspection','inspect','검사','test','tester','시험'],
+  ['appearance','visual','외관','육안'],['packing','packaging','package','포장'],['shipping','shipment','출하','delivery','납품'],
+  ['incoming','수입','입고'],['outgoing','출고'],['hardening','curing','cure','cured','경화'],['dispensing','dispense','도포','dispensed'],
+  ['fastening','bolting','fasten','체결'],['screw','bolt','나사','볼트'],['attach','attachment','부착','attached'],['condition','상태'],
+  ['missing','누락','omission','omitted','미체결','미삽입','결품'],['label','labeling','라벨','라벨링'],['torque','토크'],
+  ['program','프로그램'],['nozzle','노즐'],['jig','지그','fixture'],['master','마스터'],['nonconforming','부적합','부적합품'],
+  ['replacement','replace','change','교환','교체'],['count','interval','주기','횟수','counter'],['height','높이'],
+  ['dimension','dim','dims','치수'],['tip','팁'],['air','에어'],['time','시간'],['weight','amount','중량','도포량','양'],
+  ['specification','spec','사양','규격'],['vision','camera','비전','비젼','카메라'],['epoxy','에폭시'],['membrane','멤브레인'],
+  ['case','케이스'],['clip','클립','bracket','브라켓'],['position','위치'],['humidity','습도'],['chamber','챔버'],
+  ['performance','성능','특성','characteristic'],['leak','누설','리크'],['quantity','qty','수량'],['lot','로트'],['fifo','선입선출','first-in-first-out'],
+  ['damage','파손'],['deformation','변형'],['foreign','이물'],['sensor','센서'],['pcb','기판']
+];
+const STOP = new Set(['condition','product','status','the','a','an','of','and','or','to','for','in','on','with','by','at','be','is','check','checking','verify','verification','confirm','확인','관리','management','control','및','의','시','후','전','no','etc']);
+
+/* =========================================================
+   1. 문자열 유틸 · 유사도
+   ========================================================= */
+const norm = s => (s == null ? '' : String(s)).replace(/\r/g,'').trim();
+const flat = s => norm(s).replace(/\s+/g,' ');
+const esc = s => String(s ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+function colLetter(c){ let s=''; while(c>0){ const m=(c-1)%26; s=String.fromCharCode(65+m)+s; c=(c-m-1)/26; } return s; }
+function colIndex(L){ let n=0; for(const ch of L) n=n*26+ch.charCodeAt(0)-64; return n; }
+function parseRef(ref){ const m=/^\$?([A-Z]+)\$?(\d+)$/.exec(ref); return m ? {c:colIndex(m[1]), r:+m[2]} : null; }
+const cellRef = (r,c) => colLetter(c)+r;
+
+const SYN_MAP = new Map(); const SYN_KO = [];
+function stem(w){
+  if(/[가-힣]/.test(w)) return w;
+  if(w.length>5 && w.endsWith('ing')) return w.slice(0,-3);
+  if(w.length>4 && w.endsWith('ed')) return w.slice(0,-2);
+  if(w.length>6 && w.endsWith('ation')) return w.slice(0,-3);
+  if(w.length>3 && w.endsWith('s') && !w.endsWith('ss')) return w.slice(0,-1);
+  return w;
+}
+for(const g of SYN){ const canon=stem(g[0]); for(const w of g){ SYN_MAP.set(stem(w), canon); SYN_MAP.set(w, canon); if(/[가-힣]/.test(w) && w.length>=2) SYN_KO.push([w,canon]); } }
+SYN_KO.sort((a,b)=>b[0].length-a[0].length);
+const tokCache = new Map();
+function tokens(s){
+  s = flat(s).toLowerCase();
+  if(tokCache.has(s)) return tokCache.get(s);
+  const raw = s.replace(/ass'y/g,'assy').replace(/qt'?y/g,'qty').replace(/first[\s-]*in[\s-]*first[\s-]*out|f\.i\.f\.o\.?/g,'fifo').replace(/dim's/g,'dims').replace(/([a-z0-9])([가-힣])/g,'$1 $2').replace(/([가-힣])([a-z0-9])/g,'$1 $2')
+    .split(/[^a-z0-9가-힣]+/).filter(Boolean);
+  const out = new Set(); out.add = (orig => function(t){ return STOP.has(t) ? this : orig.call(this,t); })(out.add);
+  for(const w0 of raw){
+    if(STOP.has(w0) || (w0.length<2 && !/[가-힣]/.test(w0)) || /^\d+$/.test(w0)) continue;
+    const w = stem(w0);
+    if(SYN_MAP.has(w)){ out.add(SYN_MAP.get(w)); continue; }
+    if(/[가-힣]/.test(w)){
+      let hit=false;
+      for(const [k,canon] of SYN_KO){ if(w.includes(k)){ out.add(canon); hit=true; } }
+      if(!hit) out.add(w);
+      continue;
+    }
+    out.add(w);
+  }
+  tokCache.set(s,out);
+  return out;
+}
+function sim(a,b){
+  const fa=flat(a).toLowerCase(), fb=flat(b).toLowerCase();
+  if(!fa || !fb) return 0;
+  if(fa===fb) return 1;
+  const A=tokens(fa), B=tokens(fb);
+  if(!A.size || !B.size) return 0;
+  let i=0; for(const t of A) if(B.has(t)) i++;
+  const dice = 2*i/(A.size+B.size), cont = i/Math.min(A.size,B.size);
+  return 0.5*dice + 0.5*cont;
+}
+const simAny = (a, alts) => alts.reduce((m,x)=>Math.max(m, sim(a,x)), 0);
+function splitItems(s){
+  s = norm(s); if(!s) return [];
+  return s.split(/\n+/).map(x=>x.replace(/^\s*(?:\(?\d{1,2}\s*[.)]\s*|[①-⑳]\s*|[-•·*▶]\s*)/,'').trim())
+          .filter(x => x && /[A-Za-z가-힣0-9]/.test(x));
+}
+function opKey(s){
+  s = flat(s); if(!s) return '';
+  const m = /^(?:op\.?\s*|no\.?\s*|[A-Za-z]{1,2}\s*)?0*(\d{1,4}(?:[-.]\d{1,3})?)(?![\d])/i.exec(s);
+  return m ? m[1] : '';
+}
+function keySort(a,b){ const pa=a.split(/[-.]/).map(Number), pb=b.split(/[-.]/).map(Number); return (pa[0]-pb[0]) || ((pa[1]||0)-(pb[1]||0)); }
+
+/* =========================================================
+   2. XLSX 읽기 (셀 · 병합 · 도형 텍스트)
+   ========================================================= */
+function makeSheet(name, cells, merges, shapes){
+  let maxR=0, maxC=0;
+  for(const k of cells.keys()){ const [r,c]=k.split(',').map(Number); if(r>maxR) maxR=r; if(c>maxC) maxC=c; }
+  const mergeOf = new Map();
+  for(const m of merges){
+    if((m.r2-m.r1+1)*(m.c2-m.c1+1) > 20000) continue;
+    for(let r=m.r1;r<=m.r2;r++) for(let c=m.c1;c<=m.c2;c++) mergeOf.set(r+','+c, m);
+  }
+  return {
+    name, cells, merges, mergeOf, shapes, maxR, maxC,
+    raw(r,c){ return cells.get(r+','+c) ?? ''; },
+    get(r,c){ const m=mergeOf.get(r+','+c); return m ? (cells.get(m.r1+','+m.c1) ?? '') : (cells.get(r+','+c) ?? ''); },
+    isOrigin(r,c){ const m=mergeOf.get(r+','+c); return !m || (m.r1===r && m.c1===c); }
+  };
+}
+function resolvePath(baseDir, target){
+  if(target.startsWith('/')) return target.slice(1);
+  const out=[]; for(const p of (baseDir+target).split('/')){ if(p==='..') out.pop(); else if(p && p!=='.') out.push(p); }
+  return out.join('/');
+}
+const tagsNS = (node,name) => Array.from(node.getElementsByTagNameNS('*', name));
+const childNS = (node,name) => { for(const c of node.children) if(c.localName===name) return c; return null; };
+
+async function readXlsx(buf){
+  if(typeof JSZip === 'undefined') throw new Error('JSZip 라이브러리를 불러오지 못했습니다. 인터넷 연결을 확인한 뒤 새로고침하세요.');
+  const zip = await JSZip.loadAsync(buf);
+  const X = async p => { const f=zip.file(p); return f ? new DOMParser().parseFromString(await f.async('string'),'application/xml') : null; };
+  const sst = [];
+  const ss = await X('xl/sharedStrings.xml');
+  if(ss) for(const si of tagsNS(ss,'si')){
+    let t=''; for(const tn of tagsNS(si,'t')){ if(tn.parentNode && tn.parentNode.localName==='rPh') continue; t+=tn.textContent; }
+    sst.push(t);
+  }
+  const wb = await X('xl/workbook.xml');
+  if(!wb) throw new Error('xlsx 형식이 아닙니다. (.xls는 Excel에서 .xlsx로 다시 저장해 주세요)');
+  const rels = await X('xl/_rels/workbook.xml.rels');
+  const relMap = {}; if(rels) for(const r of tagsNS(rels,'Relationship')) relMap[r.getAttribute('Id')] = r.getAttribute('Target');
+  const sheets = [];
+  for(const s of tagsNS(wb,'sheet')){
+    const rid = s.getAttributeNS('http://schemas.openxmlformats.org/officeDocument/2006/relationships','id') || s.getAttribute('r:id');
+    const target = relMap[rid]; if(!target) continue;
+    const path = resolvePath('xl/', target);
+    const doc = await X(path); if(!doc) continue;
+    const cells = new Map();
+    for(const c of tagsNS(doc,'c')){
+      const ref=c.getAttribute('r'); if(!ref) continue;
+      const t=c.getAttribute('t'); let v=null;
+      if(t==='inlineStr'){ v=tagsNS(c,'t').map(x=>x.textContent).join(''); }
+      else {
+        const vn=childNS(c,'v'); if(!vn) continue; v=vn.textContent;
+        if(t==='s') v=sst[+v] ?? '';
+        else if(t==='b') v = v==='1' ? 'TRUE' : 'FALSE';
+        else if(!t || t==='n'){ const n=+v; if(isFinite(n)) v=String(Math.round(n*1e9)/1e9); }
+      }
+      if(v==null || v==='') continue;
+      const p=parseRef(ref); if(p) cells.set(p.r+','+p.c, v);
+    }
+    const merges=[];
+    for(const m of tagsNS(doc,'mergeCell')){
+      const [a,b]=m.getAttribute('ref').split(':'); const A=parseRef(a), B=b?parseRef(b):A;
+      if(A && B) merges.push({r1:A.r,c1:A.c,r2:B.r,c2:B.c});
+    }
+    const shapes=[];
+    const srels = await X(path.replace(/([^/]+)$/,'_rels/$1.rels'));
+    if(srels) for(const r of tagsNS(srels,'Relationship')){
+      if(!/\/drawing$/.test(r.getAttribute('Type')||'')) continue;
+      const d = await X(resolvePath(path.replace(/[^/]+$/,''), r.getAttribute('Target'))); if(!d) continue;
+      for(const kind of ['twoCellAnchor','oneCellAnchor']) for(const a of tagsNS(d,kind)){
+        const from=childNS(a,'from'); if(!from) continue;
+        const fr=+childNS(from,'row').textContent+1, fc=+childNS(from,'col').textContent+1;
+        const text = tagsNS(a,'p').filter(p=>p.namespaceURI && p.namespaceURI.includes('drawingml'))
+          .map(p=>tagsNS(p,'t').map(t=>t.textContent).join('')).filter(Boolean).join('\n');
+        if(text.trim()) shapes.push({r:fr, c:fc, text:text.trim(), ref:cellRef(fr,fc)});
+      }
+    }
+    sheets.push(makeSheet(s.getAttribute('name'), cells, merges, shapes));
+  }
+  return sheets;
+}
+
+/* =========================================================
+   3. 머리글 · 열 자동 인식
+   ========================================================= */
+function detectLayout(sh, type){
+  const roles=ROLES[type], R=Math.min(sh.maxR,45), C=Math.min(sh.maxC,90);
+  const txt=(r,c)=> sh.isOrigin(r,c) ? flat(sh.raw(r,c)) : '';
+  let best={r:0,n:0};
+  for(let r=1;r<=R;r++){
+    let n=0; const seen=new Set();
+    for(let c=1;c<=C;c++){
+      const t=txt(r,c); if(!t || t.length>60) continue;
+      for(const ro of roles){ if(seen.has(ro.k)) continue; if(ro.rx.some(x=>x.test(t))){ seen.add(ro.k); n++; break; } }
+    }
+    if(n>best.n) best={r,n};
+  }
+  if(!best.n) return {headerRow:0, dataStart:1, cols:{}, score:0};
+  const rows=[best.r-1,best.r,best.r+1].filter(r=>r>=1);
+  const cols={}, used=new Set(); let last=best.r;
+  for(const ro of roles){
+    if(ro.k==='item' && (cols.product || cols.process)) continue;
+    outer: for(const x of ro.rx) for(const r of rows) for(let c=1;c<=C;c++){
+      if(used.has(c)) continue;
+      const t=txt(r,c); if(!t || t.length>60) continue;
+      if(x.test(t)){ cols[ro.k]=c; used.add(c); const m=sh.mergeOf.get(r+','+c); last=Math.max(last, m?m.r2:r); break outer; }
+    }
+  }
+  const score = Object.keys(cols).length + roles.filter(r=>r.req && cols[r.k]).length*2;
+  return {headerRow:best.r, dataStart:last+1, cols, score};
+}
+function pickSheet(sheets, type){
+  let best=null;
+  for(const sh of sheets){ const L=detectLayout(sh,type); if(!best || L.score>best.L.score) best={sh,L}; }
+  return best;
+}
+function findProductName(sh){
+  for(let r=1;r<=Math.min(sh.maxR,14);r++) for(let c=1;c<=Math.min(sh.maxC,40);c++){
+    const t=flat(sh.raw(r,c));
+    if(!t || !/product\s*name|^product\s*:?$|^품\s*명|part\s*desc|제품\s*명/i.test(t)) continue;
+    const m0=sh.mergeOf.get(r+','+c);
+    for(let cc=(m0?m0.c2:c)+1; cc<=c+6; cc++){ const v=flat(sh.get(r,cc)); if(v && v!==t && !/:$/.test(v)) return v; }
+    const below=flat(sh.get((m0?m0.r2:r)+1,c)); if(below) return below;
+  }
+  return '';
+}
+
+/* =========================================================
+   4. 문서별 모델 만들기
+   ========================================================= */
+function newProc(key, label, name, sheet, r, c){
+  return {key, label, name:name||'', ref:sheet+'!'+cellRef(r,c), row:r, items:[], marks:[]};
+}
+function shapeMarks(sh, rowOwner, rowItem, push){
+  for(const s of sh.shapes){
+    if(!EP_RX.test(s.text)) continue;
+    let r=s.r; while(r>0 && !rowOwner[r]) r--;
+    if(rowOwner[r]) push(rowOwner[r], rowItem[r]||null, sh.name+'!'+s.ref, '도형 "'+flat(s.text)+'"');
+  }
+}
+function buildPFD(doc){
+  const sh=doc.sheet, L=doc.layout, c=L.cols, ignore=listSetting('ignoreRows').map(x=>x.toLowerCase());
+  const procs=[], byKey=new Map(), rowOwner={}, rowItem={};
+  let cur=null;
+  const addMark=(p,item,ref,how)=>{ const m={proc:p,item,ref,how,text:item?item.text:(p.name)}; p.marks.push(m); if(item) item.ep=true; };
+  for(let r=L.dataStart;r<=sh.maxR;r++){
+    const opTxt=flat(sh.get(r,c.op)), k=opKey(opTxt);
+    if(!k && opTxt){ cur=null; continue; }
+    if(k){ if(!byKey.has(k)){ const p=newProc(k, opTxt, '', sh.name, r, c.op); byKey.set(k,p); procs.push(p); } cur=byKey.get(k); }
+    if(!cur) continue;
+    rowOwner[r]=cur;
+    const nm = c.name ? flat(sh.get(r,c.name)) : '';
+    if(!nm || ignore.includes(nm.toLowerCase())) continue;
+    if(!cur.name){ cur.name=nm; }
+    for(const [col,kind] of [[c.product,'product'],[c.process,'process']]){
+      if(!col || !sh.isOrigin(r,col)) continue;
+      for(const t of splitItems(sh.raw(r,col))){
+        const it={text:t, kind, ref:sh.name+'!'+cellRef(r,col), row:r, alts:[t]};
+        cur.items.push(it); rowItem[r]=rowItem[r]||it;
+        if(EP_RX.test(t)) addMark(cur,it,it.ref,'셀 표기');
+      }
+    }
+    if(c.ep && flat(sh.get(r,c.ep))) addMark(cur, rowItem[r]||null, sh.name+'!'+cellRef(r,c.ep), 'E/P 열');
+  }
+  shapeMarks(sh,rowOwner,rowItem,addMark);
+  return {procs, productName:findProductName(sh)};
+}
+function buildCP(doc){
+  const sh=doc.sheet, L=doc.layout, c=L.cols;
+  const procs=[], byKey=new Map(), rowOwner={}, rowItem={};
+  let cur=null, last=null;
+  const addMark=(p,item,ref,how)=>{ if(p.marks.some(m=>m.ref===ref)) return; p.marks.push({proc:p,item,ref,how,text:item?item.text:p.name}); if(item) item.ep=true; };
+  const val=(r,col)=> col ? flat(sh.get(r,col)) : '';
+  const orig=(r,col)=> (col && sh.isOrigin(r,col)) ? norm(sh.raw(r,col)) : '';
+  for(let r=L.dataStart;r<=sh.maxR;r++){
+    const opTxt=flat(sh.get(r,c.op)), k=opKey(opTxt);
+    if(!k && opTxt){ cur=null; last=null; continue; }
+    if(k){ if(!byKey.has(k)){ const p=newProc(k, opTxt, '', sh.name, r, c.op); byKey.set(k,p); procs.push(p); } if(cur!==byKey.get(k)) last=null; cur=byKey.get(k); }
+    if(!cur) continue;
+    rowOwner[r]=cur;
+    if(!cur.name && c.name) cur.name=val(r,c.name);
+    const prod=orig(r,c.product), proc=orig(r,c.process), single=orig(r,c.item);
+    const text = flat(prod || proc || single);
+    if(text){
+      const it={text, kind: prod?'product':(proc?'process':''), ref:sh.name+'!'+cellRef(r, prod?c.product:(proc?c.process:c.item)), row:r,
+        alts:[text].concat(prod&&proc?[flat(proc)]:[]), no:val(r,c.no), spec:val(r,c.spec), method:val(r,c.method), freq:val(r,c.freq), control:val(r,c.control)};
+      cur.items.push(it); last=it;
+    } else if(last && c.spec && orig(r,c.spec)){
+      last.spec += ' / ' + flat(orig(r,c.spec));
+    }
+    if(last) rowItem[r]=last;
+    if(c.ep && orig(r,c.ep)) addMark(cur, last, sh.name+'!'+cellRef(r,c.ep), 'E/P 열');
+    for(let cc=1; cc<=sh.maxC; cc++){
+      if(cc===c.ep) continue;
+      const t=orig(r,cc); if(t && t.length<80 && EP_RX.test(t)) addMark(cur, last, sh.name+'!'+cellRef(r,cc), '셀 "'+flat(t)+'"');
+    }
+  }
+  shapeMarks(sh,rowOwner,rowItem,addMark);
+  return {procs, productName:findProductName(sh)};
+}
+function buildFMEA(doc){
+  const sh=doc.sheet, L=doc.layout, c=L.cols;
+  const procs=[], byKey=new Map();
+  let cur=null, curItem=null;
+  const val=(r,col)=> col ? flat(sh.get(r,col)) : '';
+  for(let r=L.dataStart;r<=sh.maxR;r++){
+    const stepTxt = val(r,c.step);
+    const k = c.op ? opKey(sh.get(r,c.op)) : opKey(stepTxt);
+    if(!k && (c.op ? flat(sh.get(r,c.op)) : '') ){ cur=null; continue; }
+    if(!k && !c.op && stepTxt && cur && stepTxt!==flat(sh.get(cur.row,c.step))){ cur=null; continue; }
+    if(k){
+      if(!byKey.has(k)){
+        const name = c.op ? stepTxt : stepTxt.replace(/^\s*(?:op\.?\s*)?[A-Za-z]{0,2}\s*\d{1,4}(?:[-.]\d{1,3})?\s*[.:)\-]?\s*/i,'');
+        const p=newProc(k, k, name, sh.name, r, c.op||c.step); byKey.set(k,p); procs.push(p);
+      }
+      if(cur!==byKey.get(k)) curItem=null;
+      cur=byKey.get(k);
+    }
+    if(!cur) continue;
+    const req = val(r,c.req) || (curItem ? curItem.text : '');
+    const fm=val(r,c.fm), cause=val(r,c.cause), prev=val(r,c.prev), det=val(r,c.det);
+    if(!req && !fm) continue;
+    const text = req || fm;
+    if(!curItem || curItem.text!==text){
+      curItem = cur.items.find(i=>i.text===text);
+      if(!curItem){ curItem={text, kind:'requirement', ref:sh.name+'!'+cellRef(r, c.req||c.fm), row:r, alts:[text], fm:[], prev:[], det:[]}; cur.items.push(curItem); }
+    }
+    for(const [v,arr] of [[fm,curItem.fm],[prev,curItem.prev],[det,curItem.det]]) if(v && !arr.includes(v)) arr.push(v);
+    for(const v of [fm,cause,prev,det]) if(v && !curItem.alts.includes(v)) curItem.alts.push(v);
+    for(const [col,v] of [[c.prev,prev],[c.det,det],[c.cause,cause],[c.fm,fm],[c.cls,val(r,c.cls)]]){
+      if(v && EP_RX.test(v) && sh.isOrigin(r,col)){
+        const ref=sh.name+'!'+cellRef(r,col);
+        if(!cur.marks.some(m=>m.ref===ref)){ cur.marks.push({proc:cur,item:curItem,ref,how:'"'+v.slice(0,60)+'"',text:curItem.text}); curItem.ep=true; }
+      }
+    }
+  }
+  const pn = findProductName(sh);
+  return {procs, productName:pn};
+}
+function buildEP(doc){
+  const sh=doc.sheet, L=doc.layout, c=L.cols;
+  const entries=[]; let lastProd='';
+  const val=(r,col)=> col ? flat(sh.get(r,col)) : '';
+  for(let r=L.dataStart;r<=sh.maxR;r++){
+    const no=val(r,c.no), device=val(r,c.device), proc=val(r,c.process);
+    let product=val(r,c.product); if(product) lastProd=product; else product=lastProd;
+    if(!no && !device && !proc) continue;
+    const procRaw = c.process ? norm(sh.get(r,c.process)) : '';
+    const cands=[];
+    for(const m of procRaw.matchAll(/\(([^)]*)\)/g)){
+      for(const tok of m[1].split(/[\/,;\n]/)){
+        const mm=/(?:^|\s|:)(?:op|[A-Za-z]{1,2})?\s*0*(\d{1,4})\s*$/i.exec(tok.trim()); if(mm) cands.push(mm[1]);
+      }
+    }
+    const lead=opKey(procRaw); if(lead && /^\s*(op|[A-Za-z]{0,2})?\s*\d/i.test(procRaw)) cands.push(lead);
+    const procName = flat(procRaw.replace(/\([^)]*\)/g,' '));
+    const target=val(r,c.target), method=val(r,c.method), equip=val(r,c.equip);
+    entries.push({no:no||('행'+r), product:flat(product), equip, device, procText:flat(procRaw), procName, target, method,
+      check:val(r,c.check), row:r, ref:sh.name+'!'+cellRef(r,c.no||c.process), cands:[...new Set(cands)],
+      text:[target,device,method].filter(Boolean).join(' / ')});
+  }
+  return {entries, productName:''};
+}
+function buildModel(doc){
+  doc.error='';
+  try{
+    if(!doc.layout.cols[ROLES[doc.type].find(r=>r.req).k]) throw new Error('필수 열을 찾지 못했습니다. “시트·열 설정”에서 열을 지정해 주세요.');
+    doc.model = {pfd:buildPFD, cp:buildCP, fmea:buildFMEA, ep:buildEP}[doc.type](doc);
+    if(doc.type==='ep') initEpProducts(doc);
+  }catch(e){ doc.model=null; doc.error=e.message; }
+}
+
+/* =========================================================
+   5. 상태
+   ========================================================= */
+const S = {
+  docs:{pfd:null,cp:null,fmea:null,ep:null},
+  baseline:new Set(['pfd','ep']),
+  settings:{matchT:0.6, nearT:0.4, nameT:0.5, ignoreItems:'Nonconforming product, 부적합품, Master Management, 한도견본',
+            ignoreRows:'Labeling, 라벨링, Label', showExtra:true},
+  overrides:{pfd:{},cp:{},fmea:{},ep:{}},
+  epProducts:null,
+  tab:'issues', filterDoc:'all', filterCat:'all', filterSev:new Set(['high','mid','low']), q:'', detailOp:null,
+  demo:false, result:null, loading:{}
+};
+function listSetting(k){ return S.settings[k].split(/[,\n]/).map(s=>s.trim()).filter(Boolean); }
+function ignoredItem(t){ const l=t.toLowerCase(); return listSetting('ignoreItems').some(k=>l.includes(k.toLowerCase())); }
+function initEpProducts(doc){
+  const prods=[...new Set(doc.model.entries.map(e=>e.product).filter(Boolean))];
+  const pn = ['pfd','cp','fmea'].map(t=>S.docs[t]&&S.docs[t].model&&S.docs[t].model.productName).find(Boolean) || '';
+  let pick = prods.filter(p=>productMatches(p,pn));
+  S.epProducts = new Set(pick.length ? pick : prods);
+}
+function productMatches(cand, pn){
+  if(!pn || !cand) return false;
+  const a=cand.toUpperCase().replace(/[^A-Z0-9가-힣]/g,''), b=pn.toUpperCase().replace(/[^A-Z0-9가-힣]/g,'');
+  if(!a) return false;
+  if(b.includes(a) || a.includes(b)) return true;
+  const init = pn.toUpperCase().split(/[^A-Z0-9]+/).filter(Boolean).map(w=>w[0]).sort().join('');
+  return a.length>=2 && a.length<=6 && a.split('').sort().join('')===init;
+}
+const loaded = t => S.docs[t] && S.docs[t].model;
+function epEntries(){ const d=loaded('ep'); if(!d) return []; return d.entries.filter(e=>!S.epProducts || S.epProducts.has(e.product)); }
+
+/* =========================================================
+   6. 비교 엔진
+   ========================================================= */
+function analyze(){
+  const R={issues:[], master:null, epAuth:null, maps:{}, epMap:new Map(), notes:[], detail:{}};
+  const base = ORDER.filter(t=>S.baseline.has(t) && loaded(t));
+  R.master = ['pfd','cp','fmea'].find(t=>base.includes(t)) || ['pfd','cp','fmea'].find(t=>loaded(t)) || null;
+  if(!R.master){ return R; }
+  if(!base.includes(R.master)) R.notes.push(`공정·관리항목 기준 문서가 선택되지 않아 ${DOC[R.master].label}를 공정 골격으로 사용했습니다.`);
+  if(!base.length) R.notes.push('기준 문서를 선택하지 않았습니다. 카드의 “기준” 스위치를 켜 주세요.');
+  const M = loaded(R.master);
+  const mKeys = new Map(M.procs.map(p=>[p.key,p]));
+  const mIndex = new Map(M.procs.map((p,i)=>[p.key,i]));
+  let id=0;
+  const push = (o) => { o.id=++id; if(o.sev==='info' && !S.settings.showExtra && o.extra) return; R.issues.push(o); };
+  const opName = k => mKeys.has(k) ? mKeys.get(k).name : '';
+
+  // --- 공정 매핑
+  for(const t of ['pfd','cp','fmea']){
+    if(!loaded(t)) continue;
+    const ov=S.overrides[t], map=new Map();
+    for(const p of loaded(t).procs){
+      if(t===R.master){ map.set(p.key,{mkey:p.key,how:'기준'}); continue; }
+      if(Object.prototype.hasOwnProperty.call(ov,p.key)){ map.set(p.key,{mkey:ov[p.key]||null,how:'수동'}); continue; }
+      if(mKeys.has(p.key)){ map.set(p.key,{mkey:p.key,how:'번호'}); continue; }
+      let best=null,bs=0; for(const m of M.procs){ const s=sim(p.name,m.name); if(s>bs){bs=s;best=m;} }
+      map.set(p.key, best && bs>=0.55 ? {mkey:best.key,how:'명칭',score:bs} : {mkey:null,how:'없음'});
+    }
+    R.maps[t]=map;
+  }
+  for(const e of epEntries()){
+    const ov=S.overrides.ep, k='r'+e.row;
+    if(Object.prototype.hasOwnProperty.call(ov,k)){ R.epMap.set(e,{mkey:ov[k]||null,how:'수동'}); continue; }
+    let best=null,bs=0; const nm=e.procName||e.equip;
+    for(const m of M.procs){ const s=Math.max(sim(nm,m.name), sim(e.equip,m.name)*0.9); if(s>bs){bs=s;best=m;} }
+    const numHits=e.cands.filter(c=>mKeys.has(c));
+    if(best && bs>=0.75) R.epMap.set(e,{mkey:best.key,how:'명칭',score:bs});
+    else if(numHits.length===1) R.epMap.set(e,{mkey:numHits[0],how:'번호'});
+    else if(numHits.length>1){ numHits.sort((a,b)=>sim(nm,opName(b))-sim(nm,opName(a))); R.epMap.set(e,{mkey:numHits[0],how:'번호'}); }
+    else if(best && bs>=0.45) R.epMap.set(e,{mkey:best.key,how:'명칭',score:bs});
+    else R.epMap.set(e,{mkey:null,how:'없음'});
+  }
+  const procsAt = (t,mk) => loaded(t).procs.filter(p=>R.maps[t].get(p.key)?.mkey===mk);
+  const where = (p,item) => item ? item.ref : p.ref;
+
+  // --- 공정 / 관리항목 비교
+  for(const t of ['pfd','cp','fmea']){
+    if(!loaded(t) || t===R.master) continue;
+    const D=loaded(t), map=R.maps[t], tl=DOC[t].label, bl=DOC[R.master].label;
+    const baseGap = S.baseline.has(t);
+    const tagBase = o => Object.assign(o,{doc:t, basis:bl, baseGap});
+    // 공정 누락/번호/명칭
+    let prevRef=null;
+    for(const m of M.procs){
+      const got=procsAt(t,m.key);
+      if(!got.length){
+        push(tagBase({cat:'공정', sev:'high', op:m.key, type:'공정 누락', where: prevRef ? prevRef+' 다음' : '(맨 앞)',
+          current:'—', expected:`${m.key} ${m.name}`, action:`${tl}에 공정 ${m.key} “${m.name}” 추가`}));
+        continue;
+      }
+      for(const p of got){
+        prevRef = p.items.length ? p.items[p.items.length-1].ref : p.ref;
+        if(p.key!==m.key) push(tagBase({cat:'공정', sev:'high', op:m.key, type:'공정번호 불일치', where:p.ref,
+          current:`${p.key} ${p.name}`, expected:`${m.key} ${m.name}`, action:`공정번호 ${p.key} → ${m.key}로 수정`}));
+        const s=sim(p.name,m.name);
+        if(s < S.settings.nameT) push(tagBase({cat:'공정', sev:'mid', op:m.key, type:'공정명 불일치', where:p.ref,
+          current:p.name, expected:m.name, action:`공정명을 “${m.name}”(으)로 맞추거나 같은 공정인지 확인 (유사도 ${Math.round(s*100)}%)`}));
+        else if(s < 0.85 && flat(p.name).toLowerCase()!==flat(m.name).toLowerCase()) push(tagBase({cat:'공정', sev:'low', op:m.key, type:'공정명 표기 차이', where:p.ref,
+          current:p.name, expected:m.name, action:`공정명 표기를 “${m.name}”(으)로 통일`}));
+      }
+    }
+    // 기준에 없는 공정
+    for(const p of D.procs){
+      if(map.get(p.key)?.mkey) continue;
+      push(tagBase({cat:'공정', sev:'mid', op:p.key, type:'기준에 없는 공정', where:p.ref, current:`${p.key} ${p.name}`, expected:'—',
+        action:`${bl}에 없는 공정입니다. 삭제하거나 ${bl}에 반영 (다른 공정과 같다면 ‘공정 매핑’에서 연결)`}));
+    }
+    // 순서
+    let maxIdx=-1;
+    for(const p of D.procs){
+      const mk=map.get(p.key)?.mkey; if(!mk) continue;
+      const i=mIndex.get(mk);
+      if(i<maxIdx) push(tagBase({cat:'공정', sev:'mid', op:mk, type:'공정 순서 불일치', where:p.ref, current:`${p.key} ${p.name}`,
+        expected:`${bl} 순서상 ${M.procs[i-1]?M.procs[i-1].key:'처음'} 다음`, action:'공정 순서를 기준과 같게 재배열'}));
+      maxIdx=Math.max(maxIdx,i);
+    }
+    // 관리항목
+    for(const m of M.procs){
+      const got=procsAt(t,m.key); if(!got.length) continue;
+      const tItems=got.flatMap(p=>p.items.map(it=>({it,p})));
+      const aItems=m.items.filter(a=>!ignoredItem(a.text));
+      const matchedT=new Set();
+      const det = (R.detail[m.key] ??= {});
+      const dd = det[t] = {missing:[], status:new Map()};
+      const cand = aItems.map(a=>({a, sc: tItems.map(x=>({x, s:simAny(a.text,x.it.alts) + (a.kind && a.kind===x.it.kind ? 0.001 : 0)})).sort((p,q)=>q.s-p.s)}));
+      const okSet = new Set();
+      for(const c of cand){ const b=c.sc[0]; if(b && b.s>=S.settings.matchT){ c.ok=b; okSet.add(b.x.it); } }
+      for(const {a,sc,ok} of cand){
+        if(ok){
+          const it=ok.x.it; matchedT.add(it); dd.status.set(it,'ok');
+          if(a.kind && it.kind && ['product','process'].includes(a.kind) && ['product','process'].includes(it.kind) && a.kind!==it.kind)
+            push(tagBase({cat:'관리항목', sev:'low', op:m.key, type:'제품/공정 특성 구분 차이', where:it.ref,
+              current:`${it.text} (${kindKo(it.kind)})`, expected:`${a.text} (${kindKo(a.kind)})`,
+              action:`${kindKo(a.kind)} 열로 옮기거나 구분이 맞는지 확인`}));
+          continue;
+        }
+        const b = sc.find(y=>!okSet.has(y.x.it) && !matchedT.has(y.x.it));
+        if(b && b.s>=S.settings.nearT){
+          const it=b.x.it; matchedT.add(it); dd.status.set(it,'near');
+          push(tagBase({cat:'관리항목', sev:'low', op:m.key, type:'관리항목 표현 차이', where:it.ref,
+            current:it.text, expected:a.text,
+            action: t==='fmea'
+              ? `“${it.text}” 행(고장형태·원인·관리 포함)이 “${a.text}”를 다루는지 확인. 아니면 “${a.text}” 요구사항 행 추가 (유사도 ${Math.round(b.s*100)}%)`
+              : `같은 항목이면 명칭을 “${a.text}”(으)로 통일, 다른 항목이면 “${a.text}” 추가 (유사도 ${Math.round(b.s*100)}%)`}));
+        } else {
+          dd.missing.push(a);
+          const lastIt=tItems.length ? tItems[tItems.length-1].it : null;
+          push(tagBase({cat:'관리항목', sev:'mid', op:m.key, type:'관리항목 누락', where: lastIt ? lastIt.ref+' 부근' : got[0].ref,
+            current: tItems.length ? '(대응 항목 없음)' : '(항목 없음)', expected:`${a.text}${a.kind?' ('+kindKo(a.kind)+')':''}`,
+            action:`${tl} 공정 ${got[0].key}에 “${a.text}” ${t==='fmea'?'요구사항/고장형태 행':'관리항목'} 추가`}));
+        }
+      }
+      for(const {it} of tItems){
+        if(matchedT.has(it)) continue;
+        if(ignoredItem(it.text)){ dd.status.set(it,'ign'); continue; }
+        const s = aItems.reduce((mx,a)=>Math.max(mx, simAny(a.text,it.alts)),0);
+        if(s>=S.settings.nearT){ dd.status.set(it,'near'); continue; }
+        dd.status.set(it,'extra');
+        push(tagBase({cat:'관리항목', sev:'info', extra:true, op:m.key, type:'기준에 없는 관리항목', where:it.ref, current:it.text, expected:'—',
+          action:`${bl}에 반영할 항목인지 확인 (불필요하면 삭제)`}));
+      }
+    }
+  }
+
+  // --- E/P 비교
+  const epBase = S.baseline.has('ep') && loaded('ep');
+  R.epAuth = epBase ? 'ep' : (['cp','pfd','fmea'].find(t=>S.baseline.has(t) && loaded(t) && loaded(t).procs.some(p=>p.marks.length)) || null);
+  if(!R.epAuth){
+    R.notes.push('E/P 기준이 없어 E/P 비교를 건너뛰었습니다. (E/P 대장을 기준으로 켜거나, E/P 표기가 있는 문서를 기준으로 선택)');
+  } else {
+    const authList = [];
+    if(R.epAuth==='ep'){
+      for(const e of epEntries()){
+        const mk=R.epMap.get(e)?.mkey;
+        if(!mk){ push({doc:'ep', basis:'E/P', cat:'E/P', sev:'mid', op:'—', type:'E/P 공정 매핑 불가', where:e.ref, current:`${e.no} ${e.procText}`, expected:'—',
+          action:'‘공정 매핑’ 탭에서 이 E/P 항목이 속한 공정을 지정'}); continue; }
+        authList.push({mk, text:e.text, label:`${e.no} ${e.device}${e.target?' · '+e.target:''}`, ref:e.ref, entry:e});
+      }
+    } else {
+      for(const p of loaded(R.epAuth).procs){
+        const mk=R.maps[R.epAuth].get(p.key)?.mkey; if(!mk) continue;
+        for(const m of p.marks) authList.push({mk, text:(m.item?m.item.alts.join(' '):p.name), label:`${m.ref} ${m.item?m.item.text:''}`, ref:m.ref});
+      }
+    }
+    const authL = R.epAuth==='ep' ? 'E/P 대장' : DOC[R.epAuth].label;
+    for(const t of ORDER){
+      if(t===R.epAuth || !loaded(t)) continue;
+      const tl = t==='ep' ? 'E/P 대장' : DOC[t].label;
+      const baseGap = S.baseline.has(t);
+      let marks=[];
+      if(t==='ep'){
+        for(const e of epEntries()){ const mk=R.epMap.get(e)?.mkey; if(mk) marks.push({mk, text:e.text, ref:e.ref, label:`${e.no} ${e.device}`, item:null}); }
+      } else {
+        for(const p of loaded(t).procs){ const mk=R.maps[t].get(p.key)?.mkey; if(!mk) continue; for(const m of p.marks) marks.push({mk, text:m.item?m.item.alts.join(' '):p.name, ref:m.ref, item:m.item, p, label:m.item?m.item.text:p.name}); }
+      }
+      if(t==='pfd' && !marks.length){
+        push({doc:t, basis:authL, baseGap, cat:'E/P', sev:'info', op:'—', type:'E/P 표기 없음', where:'—', current:'PFD 전체에 E/P 표기 없음',
+          expected:`${authList.length}건`, action:'PFD에 E/P 표기가 요구되는 양식이면 해당 공정에 표기 (불필요하면 무시)'});
+        continue;
+      }
+      const ops=[...new Set([...authList.map(a=>a.mk), ...marks.map(m=>m.mk)])].sort(keySort);
+      for(const mk of ops){
+        const A=authList.filter(a=>a.mk===mk), Mk=marks.filter(m=>m.mk===mk);
+        const pairs=[]; const usedA=new Set(), usedM=new Set();
+        const cand=[]; A.forEach((a,i)=>Mk.forEach((m,j)=>cand.push({i,j,s:sim(a.text,m.text)})));
+        cand.sort((x,y)=>y.s-x.s);
+        for(const c of cand){ if(usedA.has(c.i)||usedM.has(c.j)) continue; usedA.add(c.i); usedM.add(c.j); pairs.push(c); }
+        const tProcs = t==='ep' ? [] : procsAt(t,mk);
+        const tItems = tProcs.flatMap(p=>p.items);
+        const bestItem = txt => { let b=null,bs=0; for(const it of tItems){ const s=simAny(txt,it.alts); if(s>bs){bs=s;b=it;} } return {it:b,s:bs}; };
+        A.forEach((a,i)=>{
+          if(usedA.has(i)) return;
+          if(t==='ep'){
+            push({doc:t, basis:authL, baseGap, cat:'E/P', sev:'high', op:mk, type:'E/P 대장 미등록', where:a.ref, current:'—', expected:a.label,
+              action:`E/P 대장에 공정 ${mk} “${opName(mk)}”의 E/P 항목 등록 (또는 ${authL} 표기 재확인)`}); return;
+          }
+          const bi=bestItem(a.text);
+          const at = bi.it ? `“${bi.it.text}” 행 (${bi.it.ref})` : (tProcs[0] ? tProcs[0].ref : '공정 없음');
+          if(t==='fmea') push({doc:t, basis:authL, baseGap, cat:'E/P', sev:'high', op:mk, type:'E/P 반영 누락', where: bi.it?bi.it.ref:(tProcs[0]?tProcs[0].ref:'—'),
+            current: Mk.length ? `E/P 언급 ${Mk.length}건 (항목 수 부족)` : 'E/P 언급 없음', expected:a.label,
+            action:`${at}의 예방/검출관리에 E/P(${a.entry?a.entry.device:'장치'}) 반영 후 검출도(D) 재평가`});
+          else push({doc:t, basis:authL, baseGap, cat:'E/P', sev:'high', op:mk, type:'E/P 표기 누락', where: bi.it?bi.it.ref:(tProcs[0]?tProcs[0].ref:'—'),
+            current: Mk.length ? `이 공정 표기 ${Mk.length}건 (항목 수 부족)` : '표기 없음', expected:a.label,
+            action: tProcs.length ? `공정 ${mk} ${at}에 <E/P> 표기 추가` : `공정 ${mk}가 ${tl}에 없음. 공정 추가 후 <E/P> 표기`});
+        });
+        Mk.forEach((m,j)=>{
+          if(usedM.has(j)) return;
+          push({doc:t, basis:authL, baseGap, cat:'E/P', sev:'mid', op:mk, type: t==='ep'?'E/P 대장에만 있는 항목':'기준에 없는 E/P 표기', where:m.ref,
+            current:m.label, expected:'—', action: t==='ep' ? `${authL}에 E/P 표기가 없는 공정. 대장 항목을 정리하거나 ${authL}에 표기`
+              : `E/P 대장에 없는 표기. 표기를 지우거나 E/P 대장에 등록`});
+        });
+        if(t==='cp' || t==='pfd') for(const c of pairs){
+          const a=A[c.i], m=Mk[c.j]; if(!m.item) continue;
+          const bi=bestItem(a.text); const sm=simAny(a.text, m.item.alts);
+          if(bi.it && bi.it!==m.item && bi.s>=S.settings.nearT && bi.s-sm>0.2)
+            push({doc:t, basis:authL, baseGap, cat:'E/P', sev:'mid', op:mk, type:'E/P 표기 위치 불일치', where:m.ref,
+              current:`“${m.item.text}” 행 (${m.ref})`, expected:`“${bi.it.text}” 행 (${bi.it.ref}) · ${a.label}`,
+              action:'<E/P> 표기를 기준 검출대상과 맞는 관리항목 행으로 이동'});
+        }
+      }
+    }
+  }
+  R.issues.sort((a,b)=> ORDER.indexOf(a.doc)-ORDER.indexOf(b.doc) || keySortSafe(a.op,b.op) || SEV_ORDER[a.sev]-SEV_ORDER[b.sev]);
+  return R;
+}
+function keySortSafe(a,b){ const na=/^\d/.test(a), nb=/^\d/.test(b); if(na&&nb) return keySort(a,b); return na?-1:nb?1:0; }
+const kindKo = k => ({product:'제품특성', process:'공정특성', requirement:'요구사항'}[k]||k);
+
+/* =========================================================
+   7. 화면
+   ========================================================= */
+const $ = s => document.querySelector(s);
+function toast(msg){ const t=$('#toast'); t.textContent=msg; t.hidden=false; clearTimeout(toast._t); toast._t=setTimeout(()=>t.hidden=true,2200); }
+
+function renderCards(){
+  const box=$('#cards');
+  box.innerHTML = ORDER.map(t=>{
+    const d=S.docs[t], isBase=S.baseline.has(t);
+    let stats='', cfg='';
+    if(S.loading[t]) stats='<span class="loading">파일 읽는 중…</span>';
+    else if(d && d.error) stats=`<span class="stat warn">${esc(d.error)}</span>`;
+    else if(d && d.model){
+      if(t==='ep'){
+        const all=d.model.entries.length, f=epEntries().length;
+        stats=`<span class="stat">등록 ${all}건</span><span class="stat">비교 대상 ${f}건</span>`;
+      } else {
+        const P=d.model.procs, it=P.reduce((s,p)=>s+p.items.length,0), ep=P.reduce((s,p)=>s+p.marks.length,0);
+        stats=`<span class="stat">공정 ${P.length}</span><span class="stat">항목 ${it}</span><span class="stat">E/P ${ep}</span>`;
+      }
+    }
+    if(d){
+      const roles=ROLES[t];
+      const colOpts = sel => `<option value="0">(없음)</option>` + Array.from({length:Math.min(d.sheet.maxC,90)},(_,i)=>i+1).map(c=>{
+        const h=[d.layout.headerRow, d.layout.headerRow+1].map(r=>r>0?flat(d.sheet.get(r,c)):'').filter(Boolean).join(' / ').slice(0,28);
+        return `<option value="${c}" ${sel===c?'selected':''}>${colLetter(c)}${h?' · '+esc(h):''}</option>`; }).join('');
+      cfg = `<details class="cfg" data-doc="${t}"><summary>시트·열 설정 (자동 인식됨)</summary><div class="cfg-grid">
+        <label for="sh-${t}">시트</label><select id="sh-${t}" data-act="sheet" data-doc="${t}">${d.sheets.map(s=>`<option ${s===d.sheet?'selected':''}>${esc(s.name)}</option>`).join('')}</select>
+        <label for="ds-${t}">데이터 시작 행</label><input type="number" id="ds-${t}" data-act="start" data-doc="${t}" min="1" value="${d.layout.dataStart}">
+        ${roles.map(r=>`<label for="col-${t}-${r.k}">${esc(r.l)}${r.req?' *':''}</label><select id="col-${t}-${r.k}" data-act="col" data-doc="${t}" data-role="${r.k}">${colOpts(d.layout.cols[r.k]||0)}</select>`).join('')}
+      </div></details>`;
+    }
+    let prod='';
+    if(t==='ep' && d && d.model){
+      const counts={}; for(const e of d.model.entries) counts[e.product]=(counts[e.product]||0)+1;
+      prod = `<div class="note">비교할 품목 (자동 선택, 클릭해 변경)</div><div class="chips">${Object.keys(counts).filter(Boolean).map(p=>
+        `<button type="button" class="chip" data-act="prod" data-val="${esc(p)}" aria-pressed="${S.epProducts&&S.epProducts.has(p)}">${esc(p)}<span class="n">${counts[p]}</span></button>`).join('')}</div>`;
+    }
+    return `<div class="card ${isBase?'base':''}">
+      <div class="card-head"><span class="doc-tag">${DOC[t].label}</span>
+        <label class="switch" for="base-${t}"><input type="checkbox" id="base-${t}" data-act="base" data-doc="${t}" ${isBase?'checked':''}>기준</label></div>
+      <div class="full">${DOC[t].full}</div>
+      <label class="slot" data-slot="${t}" for="file-${t}">
+        <input type="file" id="file-${t}" accept=".xlsx,.xlsm" data-act="file" data-doc="${t}">
+        <span class="fname">${d ? esc(d.fileName) : '파일 선택 또는 끌어 놓기'}</span>
+        <span class="hint">${d ? `시트: ${esc(d.sheet.name)}${d.model&&d.model.productName?' · 품명: '+esc(d.model.productName):''}` : '.xlsx'}</span>
+      </label>
+      <div class="stats">${stats}</div>${prod}${cfg}
+    </div>`;
+  }).join('');
+}
+
+function renderResult(){
+  const R=S.result, basis=$('#basis'), sum=$('#summary'), panel=$('#panel');
+  document.querySelectorAll('.tab').forEach(b=>b.setAttribute('aria-selected', String(b.dataset.tab===S.tab)));
+  if(!R || !R.master){
+    basis.innerHTML='<span class="note">PFD, CP, PFMEA 중 하나 이상을 올리면 결과가 나타납니다.</span>';
+    sum.innerHTML=''; panel.innerHTML='<div class="empty">아직 비교할 자료가 없습니다.</div>'; return;
+  }
+  const baseNames = ORDER.filter(t=>S.baseline.has(t)&&loaded(t)).map(t=>DOC[t].label).join(' + ') || '없음';
+  basis.innerHTML = `<span><span class="lbl">기준 자료</span> <b>${baseNames}</b></span>
+    <span><span class="lbl">공정·관리항목 기준</span> <b>${DOC[R.master].label}</b></span>
+    <span><span class="lbl">E/P 기준</span> <b>${R.epAuth ? (R.epAuth==='ep'?'E/P 대장':DOC[R.epAuth].label) : '없음'}</b></span>
+    ${R.notes.map(n=>`<span class="note">· ${esc(n)}</span>`).join('')}`;
+  const docsWithIssues = ORDER.filter(t=>loaded(t) && R.issues.some(i=>i.doc===t));
+  sum.innerHTML = [['all','전체']].concat(docsWithIssues.map(t=>[t, t==='ep'?'E/P 대장':DOC[t].label])).map(([t,lab])=>{
+    const L=R.issues.filter(i=>t==='all'||i.doc===t);
+    const c={high:0,mid:0,low:0,info:0}; L.forEach(i=>c[i.sev]++);
+    const tot=L.length||1;
+    return `<button type="button" class="sum" data-act="fdoc" data-val="${t}" aria-pressed="${S.filterDoc===t}">
+      <span class="t"><span>${esc(lab)}${t!=='all'&&S.baseline.has(t)&&t!==R.master&&t!==R.epAuth?' <span class="note">(기준 간 차이)</span>':''}</span><span class="doc-tag">${t==='all'?'Σ':esc(DOC[t].label)}</span></span>
+      <span class="big">${c.high+c.mid}<small>수정·확인 필요</small></span>
+      <span class="bar">${['high','mid','low','info'].map(s=>`<i class="s-${s}" style="width:${c[s]/tot*100}%;background:var(--c)"></i>`).join('')}</span>
+      <span class="legend">${['high','mid','low','info'].map(s=>`<span><span class="dot s-${s}" style="background:var(--c)"></span>${SEV[s]} ${c[s]}</span>`).join('')}</span>
+    </button>`;
+  }).join('');
+  panel.innerHTML = {issues:renderIssues, matrix:renderMatrix, detail:renderDetail, mapping:renderMapping}[S.tab]();
+}
+function filteredIssues(){
+  const q=S.q.trim().toLowerCase();
+  return S.result.issues.filter(i=>(S.filterDoc==='all'||i.doc===S.filterDoc) && (S.filterCat==='all'||i.cat===S.filterCat) && S.filterSev.has(i.sev)
+    && (!q || [i.op,i.type,i.where,i.current,i.expected,i.action].join(' ').toLowerCase().includes(q)));
+}
+function renderIssues(){
+  const L=filteredIssues();
+  const cats=['all','공정','관리항목','E/P'];
+  const head = `<div class="toolbar">
+    <div class="chips">${cats.map(c=>`<button type="button" class="chip" data-act="fcat" data-val="${c}" aria-pressed="${S.filterCat===c}">${c==='all'?'전체 구분':c}</button>`).join('')}</div>
+    <div class="chips">${Object.keys(SEV).map(s=>`<button type="button" class="chip" data-act="fsev" data-val="${s}" aria-pressed="${S.filterSev.has(s)}"><span class="dot s-${s}" style="background:var(--c)"></span>${SEV[s]}</button>`).join('')}</div>
+    <div class="grow"><input type="text" id="q" placeholder="공정번호, 항목명, 셀 위치로 찾기" value="${esc(S.q)}" aria-label="검색"></div>
+    <button type="button" class="btn ghost" data-act="copy">표 복사 (Excel 붙여넣기)</button>
+    <button type="button" class="btn" data-act="csv">CSV 저장</button>
+  </div>`;
+  if(!L.length) return head+'<div class="empty">조건에 맞는 차이가 없습니다.</div>';
+  return head + `<div class="tbl-wrap" style="margin-top:10px"><table><thead><tr>
+    <th>구분</th><th>문서</th><th>공정</th><th>유형</th><th>고칠 위치</th><th>현재</th><th>기준</th><th>수정 가이드</th></tr></thead><tbody>
+    ${L.map(i=>`<tr><td class="sev s-${i.sev}"><span class="pill">${SEV[i.sev]}</span></td>
+      <td><span class="doc-tag">${esc(i.doc==='ep'?'E/P':DOC[i.doc].label)}</span></td>
+      <td class="op"><span class="k">${esc(i.op)}</span><div class="note">${esc(S.result && opNameOf(i.op))}</div></td>
+      <td class="typ">${esc(i.type)}<div class="note">${esc(i.cat)}</div></td>
+      <td class="ref">${esc(i.where)}</td>
+      <td class="cur pre wide">${esc(i.current)}</td>
+      <td class="pre wide">${esc(i.expected)}<div class="note">기준: ${esc(i.basis)}</div></td>
+      <td class="act wide">${esc(i.action)}</td></tr>`).join('')}
+    </tbody></table></div>`;
+}
+function opNameOf(k){ const M=loaded(S.result.master); const p=M&&M.procs.find(p=>p.key===k); return p?p.name:''; }
+function renderMatrix(){
+  const R=S.result, M=loaded(R.master);
+  const docs=['pfd','cp','fmea'].filter(loaded);
+  const epBy = {}; for(const [e,m] of R.epMap) if(m.mkey) (epBy[m.mkey] ??= []).push(e);
+  const rows = M.procs.map(m=>{
+    const tds = docs.map(t=>{
+      const got = loaded(t).procs.filter(p=>R.maps[t].get(p.key)?.mkey===m.key);
+      if(!got.length) return `<td><div class="cell s-high"><span class="nm">누락</span></div></td>`;
+      return `<td>${got.map(p=>{
+        const s = t===R.master ? 1 : sim(p.name,m.name);
+        const cls = t===R.master ? 's-info' : (p.key!==m.key ? 's-high' : s<S.settings.nameT ? 's-mid' : s<0.85 ? 's-low' : 's-ok');
+        const n = R.issues.filter(i=>i.doc===t && i.op===m.key && i.sev!=='info').length;
+        return `<div class="cell ${cls}"><span class="nm">${esc(p.key)} ${esc(p.name)}${p.marks.length?`<span class="ep">E/P×${p.marks.length}</span>`:''}</span>
+          <span class="meta">항목 ${p.items.length}${t!==R.master?` · 차이 ${n}`:' · 기준'}</span></div>`; }).join('')}</td>`;
+    }).join('');
+    const eps = (epBy[m.key]||[]);
+    const epTd = loaded('ep') ? `<td>${eps.length?`<div class="cell s-info">${eps.map(e=>`<span class="nm">${esc(e.no)} <span class="note">${esc(e.device)}</span></span>`).join('')}</div>`:'<span class="note">—</span>'}</td>` : '';
+    return `<tr><td class="k">${esc(m.key)}</td>${tds}${epTd}</tr>`;
+  });
+  const extra = docs.filter(t=>t!==R.master).flatMap(t=>loaded(t).procs.filter(p=>!R.maps[t].get(p.key)?.mkey).map(p=>`<tr><td class="k">—</td>${docs.map(d=>d===t?`<td><div class="cell s-mid"><span class="nm">${esc(p.key)} ${esc(p.name)}</span><span class="meta">기준에 없는 공정</span></div></td>`:'<td></td>').join('')}${loaded('ep')?'<td></td>':''}</tr>`));
+  return `<p class="note">행은 ${DOC[R.master].label}의 공정 순서입니다. 색: <span class="dot s-ok" style="background:var(--c)"></span>일치 <span class="dot s-low" style="background:var(--c)"></span>표기 차이 <span class="dot s-mid" style="background:var(--c)"></span>확인 필요 <span class="dot s-high" style="background:var(--c)"></span>누락·번호 불일치</p>
+  <div class="tbl-wrap mx"><table><thead><tr><th>Op</th>${docs.map(t=>`<th>${DOC[t].label}${t===R.master?' (기준)':''}</th>`).join('')}${loaded('ep')?'<th>E/P 대장</th>':''}</tr></thead>
+  <tbody>${rows.join('')}${extra.join('')}</tbody></table></div>`;
+}
+function renderDetail(){
+  const R=S.result, M=loaded(R.master);
+  if(!S.detailOp || !M.procs.some(p=>p.key===S.detailOp)) S.detailOp = M.procs[0]?.key;
+  const m=M.procs.find(p=>p.key===S.detailOp);
+  const list = M.procs.map(p=>{ const n=R.issues.filter(i=>i.op===p.key && i.sev!=='info').length;
+    return `<button type="button" class="opbtn" data-act="op" data-val="${esc(p.key)}" aria-current="${p.key===S.detailOp}"><span>${esc(p.key)} ${esc(p.name)}</span>${n?`<span class="cnt">${n}</span>`:''}</button>`; }).join('');
+  if(!m) return '<div class="empty">공정이 없습니다.</div>';
+  const cols = ['pfd','cp','fmea'].filter(loaded).map(t=>{
+    const got = loaded(t).procs.filter(p=>R.maps[t].get(p.key)?.mkey===m.key);
+    const dd = R.detail[m.key]?.[t];
+    const items = got.flatMap(p=>p.items).map(it=>{
+      const st = t===R.master ? 'info' : ({ok:'ok', near:'low', extra:'mid', ign:'info'}[dd?.status.get(it)] || 'info');
+      return `<div class="it s-${st}">${esc(it.text)}${it.kind?`<span class="k">${esc(kindKo(it.kind))}</span>`:''}${it.ep?'<span class="ep">E/P</span>':''}<span class="k">${esc(it.ref.split('!')[1])}</span></div>`;
+    }).join('');
+    const miss = (dd?.missing||[]).map(a=>`<div class="it miss s-high">${esc(a.text)}</div>`).join('');
+    return `<div class="col"><h3><span class="doc-tag">${DOC[t].label}</span>${t===R.master?'<span class="note">기준</span>':''}</h3>
+      <div class="pname">${got.length ? got.map(p=>esc(p.key+' '+p.name)).join(', ') : '<span style="color:var(--high)">공정 없음</span>'}</div>${items}${miss}</div>`;
+  }).join('');
+  const eps=[...R.epMap].filter(([e,mm])=>mm.mkey===m.key).map(([e])=>e);
+  const epCol = loaded('ep') ? `<div class="col"><h3><span class="doc-tag">E/P 대장</span></h3>${eps.length?eps.map(e=>`<div class="it s-info"><b>${esc(e.no)}</b> ${esc(e.device)}<div class="note">${esc(e.target)}${e.method?' · '+esc(e.method):''}</div></div>`).join(''):'<span class="note">등록 없음</span>'}</div>` : '';
+  const iss = R.issues.filter(i=>i.op===m.key);
+  return `<div class="detail"><nav class="oplist" aria-label="공정 목록">${list}</nav><div style="display:grid;gap:12px;min-width:0">
+    <div class="cols">${cols}${epCol}</div>
+    <p class="note">항목 색: <span class="dot s-ok" style="background:var(--c)"></span>기준과 일치 <span class="dot s-low" style="background:var(--c)"></span>표현 차이 <span class="dot s-mid" style="background:var(--c)"></span>기준에 없음 <span class="dot s-high" style="background:var(--c)"></span>누락(기준에만 있음)</p>
+    ${iss.length?`<div class="tbl-wrap"><table><thead><tr><th>구분</th><th>문서</th><th>유형</th><th>위치</th><th>수정 가이드</th></tr></thead><tbody>${iss.map(i=>`<tr><td class="sev s-${i.sev}"><span class="pill">${SEV[i.sev]}</span></td><td>${esc(i.doc==='ep'?'E/P':DOC[i.doc].label)}</td><td>${esc(i.type)}</td><td class="ref">${esc(i.where)}</td><td class="act">${esc(i.action)}</td></tr>`).join('')}</tbody></table></div>`:''}
+  </div></div>`;
+}
+function renderMapping(){
+  const R=S.result, M=loaded(R.master);
+  const opts = sel => `<option value="">— 기준에 없음</option>`+M.procs.map(p=>`<option value="${esc(p.key)}" ${sel===p.key?'selected':''}>${esc(p.key)} ${esc(p.name)}</option>`).join('');
+  let html = `<p class="note">각 문서의 공정이 기준(${DOC[R.master].label}) 공정 중 어디에 대응하는지 보여 줍니다. 자동 연결이 틀렸으면 직접 고르세요. 결과가 바로 다시 계산됩니다.</p>`;
+  for(const t of ['pfd','cp','fmea']){
+    if(!loaded(t) || t===R.master) continue;
+    html += `<h3 style="margin:14px 0 6px;font-size:14px">${DOC[t].label}</h3><div class="tbl-wrap"><table><thead><tr><th>문서 공정</th><th>위치</th><th>연결 방법</th><th>기준 공정</th></tr></thead><tbody>`+
+      loaded(t).procs.map(p=>{ const m=R.maps[t].get(p.key);
+        return `<tr><td>${esc(p.key)} ${esc(p.name)}</td><td class="ref">${esc(p.ref)}</td><td class="note">${esc(m.how)}${m.score?` ${Math.round(m.score*100)}%`:''}</td>
+        <td><select id="map-${t}-${esc(p.key)}" data-act="map" data-doc="${t}" data-key="${esc(p.key)}" aria-label="${esc(p.key)} 기준 공정">${opts(m.mkey)}</select></td></tr>`; }).join('')+`</tbody></table></div>`;
+  }
+  if(loaded('ep')){
+    html += `<h3 style="margin:14px 0 6px;font-size:14px">E/P 대장 (선택한 품목)</h3><div class="tbl-wrap"><table><thead><tr><th>E/P 번호</th><th>설치 공정</th><th>장치 · 검출대상</th><th>연결 방법</th><th>기준 공정</th></tr></thead><tbody>`+
+      epEntries().map(e=>{ const m=R.epMap.get(e)||{};
+        return `<tr><td class="mono">${esc(e.no)}<div class="note">${esc(e.product)}</div></td><td class="pre">${esc(e.procText)}</td><td>${esc(e.device)}<div class="note">${esc(e.target)}</div></td>
+        <td class="note">${esc(m.how||'')}${m.score?` ${Math.round(m.score*100)}%`:''}</td>
+        <td><select id="map-ep-${e.row}" data-act="map" data-doc="ep" data-key="r${e.row}" aria-label="${esc(e.no)} 기준 공정">${opts(m.mkey)}</select></td></tr>`; }).join('')+`</tbody></table></div>`;
+  }
+  return html;
+}
+function rerun(){ S.result = analyze(); renderResult(); }
+function renderAll(){ renderCards(); rerun(); $('#demo-banner').hidden=!S.demo; }
+
+/* ---------- 내보내기 ---------- */
+function issueRows(){
+  const head=['구분','문서','공정','공정명','항목 구분','유형','고칠 위치','현재','기준','기준 문서','수정 가이드'];
+  return [head].concat(filteredIssues().map(i=>[SEV[i.sev], i.doc==='ep'?'E/P':DOC[i.doc].label, i.op, opNameOf(i.op), i.cat, i.type, i.where, i.current, i.expected, i.basis, i.action]));
+}
+function exportCSV(){
+  const csv = '﻿'+issueRows().map(r=>r.map(v=>'"'+String(v??'').replace(/"/g,'""')+'"').join(',')).join('\r\n');
+  const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
+  a.download='정합성_검사결과_'+new Date().toISOString().slice(0,10)+'.csv'; document.body.appendChild(a); a.click(); a.remove();
+  toast('CSV 저장을 시작했습니다. 저장되지 않으면 “표 복사”를 사용하세요.');
+}
+function copyTSV(){
+  const tsv = issueRows().map(r=>r.map(v=>String(v??'').replace(/[\t\n]+/g,' ')).join('\t')).join('\n');
+  const fallback=()=>{ const ta=document.createElement('textarea'); ta.value=tsv; document.body.appendChild(ta); ta.select(); try{document.execCommand('copy'); toast('복사했습니다. Excel에 붙여 넣으세요.');}catch(e){toast('복사하지 못했습니다.');} ta.remove(); };
+  if(navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(tsv).then(()=>toast('복사했습니다. Excel에 붙여 넣으세요.'), fallback); else fallback();
+}
+
+/* ---------- 파일 로드 ---------- */
+function classify(name){
+  const n=name.toLowerCase();
+  if(/fmea/.test(n)) return 'fmea';
+  if(/error.?proof|poka|실수|(^|[^a-z])e[._\-]?p([^a-z]|$)/.test(n)) return 'ep';
+  if(/control.?plan|관리계획|(^|[^a-z])cp([^a-z]|$)/.test(n)) return 'cp';
+  if(/pfd|flow|흐름/.test(n)) return 'pfd';
+  return null;
+}
+async function loadFile(file, type){
+  if(S.demo){ S.demo=false; S.docs={pfd:null,cp:null,fmea:null,ep:null}; S.overrides={pfd:{},cp:{},fmea:{},ep:{}}; S.epProducts=null; }
+  S.loading[type]=true; renderCards();
+  try{
+    const sheets = await readXlsx(await file.arrayBuffer());
+    const best = pickSheet(sheets, type);
+    S.docs[type] = {type, fileName:file.name, sheets, sheet:best.sh, layout:best.L, model:null, error:''};
+    S.overrides[type]={};
+    buildModel(S.docs[type]);
+    if(type!=='ep' && loaded('ep')) initEpProducts(S.docs.ep);
+  }catch(e){
+    S.docs[type] = null; toast(`${DOC[type].label}: ${e.message}`);
+  }
+  S.loading[type]=false; renderAll();
+}
+async function loadMany(files){
+  const list=[...files].filter(f=>/\.xls[xm]$/i.test(f.name));
+  if(!list.length){ toast('.xlsx 파일만 읽을 수 있습니다.'); return; }
+  const taken=new Set(); const rest=[];
+  for(const f of list){ const t=classify(f.name); if(t && !taken.has(t)){ taken.add(t); await loadFile(f,t); } else rest.push(f); }
+  for(const f of rest){
+    const sheets = await readXlsx(await f.arrayBuffer()).catch(()=>null); if(!sheets) continue;
+    let best=null; for(const t of ORDER){ if(taken.has(t)) continue; const b=pickSheet(sheets,t); if(b && (!best || b.L.score>best.s)) best={t,s:b.L.score}; }
+    if(best){ taken.add(best.t); await loadFile(f,best.t); }
+  }
+}
+
+/* ---------- 이벤트 ---------- */
+document.addEventListener('change', e=>{
+  const el=e.target, act=el.dataset.act, t=el.dataset.doc;
+  if(act==='file' && el.files[0]) loadFile(el.files[0], t);
+  else if(act==='base'){ el.checked ? S.baseline.add(t) : S.baseline.delete(t); renderAll(); }
+  else if(act==='sheet'){ const d=S.docs[t]; d.sheet=d.sheets.find(s=>s.name===el.value); d.layout=detectLayout(d.sheet,t); S.overrides[t]={}; buildModel(d); renderAll(); }
+  else if(act==='start'){ const d=S.docs[t]; d.layout.dataStart=Math.max(1,+el.value||1); buildModel(d); renderAll(); }
+  else if(act==='col'){ const d=S.docs[t]; const v=+el.value; if(v) d.layout.cols[el.dataset.role]=v; else delete d.layout.cols[el.dataset.role]; buildModel(d); renderAll(); reopen(t); }
+  else if(act==='map'){ S.overrides[t][el.dataset.key]=el.value; rerun(); }
+  else if(el.id==='set-match'||el.id==='set-near'||el.id==='set-name'){ const k={'set-match':'matchT','set-near':'nearT','set-name':'nameT'}[el.id]; S.settings[k]=Math.min(1,Math.max(0,+el.value||0)); rerun(); }
+  else if(el.id==='set-ignore-items'){ S.settings.ignoreItems=el.value; rerun(); }
+  else if(el.id==='set-ignore-rows'){ S.settings.ignoreRows=el.value; ['pfd'].forEach(x=>S.docs[x]&&buildModel(S.docs[x])); renderAll(); }
+  else if(el.id==='set-extra'){ S.settings.showExtra=el.checked; rerun(); }
+});
+function reopen(t){ const d=document.querySelector(`details.cfg[data-doc="${t}"]`); if(d) d.open=true; }
+document.addEventListener('input', e=>{ if(e.target.id==='q'){ S.q=e.target.value; const pos=e.target.selectionStart; renderResult(); const q=$('#q'); if(q){ q.focus(); q.setSelectionRange(pos,pos);} } });
+document.addEventListener('click', e=>{
+  const el=e.target.closest('[data-act]'); if(!el) { const tab=e.target.closest('.tab'); if(tab){ S.tab=tab.dataset.tab; renderResult(); } return; }
+  const act=el.dataset.act, v=el.dataset.val;
+  if(act==='prod'){ S.epProducts.has(v)?S.epProducts.delete(v):S.epProducts.add(v); renderAll(); }
+  else if(act==='fdoc'){ S.filterDoc=v; S.tab='issues'; renderResult(); }
+  else if(act==='fcat'){ S.filterCat=v; renderResult(); }
+  else if(act==='fsev'){ S.filterSev.has(v)?S.filterSev.delete(v):S.filterSev.add(v); renderResult(); }
+  else if(act==='op'){ S.detailOp=v; renderResult(); }
+  else if(act==='csv') exportCSV();
+  else if(act==='copy') copyTSV();
+});
+$('#btn-clear-demo').addEventListener('click', ()=>{ S.demo=false; S.docs={pfd:null,cp:null,fmea:null,ep:null}; S.epProducts=null; S.overrides={pfd:{},cp:{},fmea:{},ep:{}}; renderAll(); });
+let dragDepth=0;
+window.addEventListener('dragover', e=>{ e.preventDefault(); });
+window.addEventListener('dragenter', e=>{ dragDepth++; $('#drop-all').classList.add('over'); });
+window.addEventListener('dragleave', e=>{ if(--dragDepth<=0){ dragDepth=0; $('#drop-all').classList.remove('over'); document.querySelectorAll('.slot.over').forEach(s=>s.classList.remove('over')); } });
+document.addEventListener('dragover', e=>{ document.querySelectorAll('.slot.over').forEach(s=>s.classList.remove('over')); const s=e.target.closest&&e.target.closest('.slot'); if(s) s.classList.add('over'); });
+window.addEventListener('drop', e=>{
+  e.preventDefault(); dragDepth=0; $('#drop-all').classList.remove('over');
+  const slot=e.target.closest&&e.target.closest('.slot'); document.querySelectorAll('.slot.over').forEach(s=>s.classList.remove('over'));
+  const files=e.dataTransfer && e.dataTransfer.files; if(!files || !files.length) return;
+  if(slot && files.length===1) loadFile(files[0], slot.dataset.slot); else loadMany(files);
+});
+function initSettingsUI(){
+  $('#set-match').value=S.settings.matchT; $('#set-near').value=S.settings.nearT; $('#set-name').value=S.settings.nameT;
+  $('#set-ignore-items').value=S.settings.ignoreItems; $('#set-ignore-rows').value=S.settings.ignoreRows; $('#set-extra').checked=S.settings.showExtra;
+}
+
+/* =========================================================
+   8. 예시 데이터 (가상의 제품 · 실제 자료 아님)
+   ========================================================= */
+function sheetFromRows(name, rows, shapes){
+  const cells=new Map(); rows.forEach((row,ri)=>row.forEach((v,ci)=>{ if(v!==''&&v!=null) cells.set((ri+1)+','+(ci+1), String(v)); }));
+  return makeSheet(name, cells, [], (shapes||[]).map(s=>({...s, ref:cellRef(s.r,s.c)})));
+}
+function loadDemo(){
+  const pfd = sheetFromRows('PFD',[
+    ['','Product :','DEMO TEMP SENSOR'],[],
+    ['Op No','Process Name','Product Characteristics (Outputs)','Process Characteristics (Inputs)'],
+    ['10','Incoming Inspection','1. Appearance',''],
+    ['20','Soldering','1. Soldering Condition','1. Tip Temperature\n2. Tip Replacement Count\n3. Program Verification'],
+    ['','Labeling','Production film',''],
+    ['30','Screw Fastening','1. Assembly Condition\n2. Bolt Missing','1. Driver Torque'],
+    ['40','Leak Test','1. Leak Rate','1. Test Pressure\n2. Master Sample Check'],
+    ['50','Packing','1. Packing Quantity',''],
+  ]);
+  const cp = sheetFromRows('CP',[
+    ['Control Plan','','','','Product Name','DEMO TEMP SENSOR'],[],
+    ['Process No','Process Name','No','Product','Process','Specification','Checking method','Freq','Control Method','Reaction Plan'],
+    ['10','Incoming Inspection','1','Appearance','','No damage','Visual','n=5/Lot','Inspection Report','Return'],
+    ['20','Soldering','1','','Soldering iron tip temperature','365±10℃','Thermometer','1time/before working','Machine Check Sheet','Re-setting'],
+    ['','','2','','Program check','Program No. 302','Display','1time/before working','Machine Check Sheet','Re-setting'],
+    ['','','3','Soldering condition','','No cold solder','Microscope','All','Work Instruction','Scrap'],
+    ['','','4','','Nonconforming product','Tag attach','Visual','All','Nonconformance Tag','Scrap'],
+    ['30','Screw Assembly','1','','Driver torque','0.7 kgf·cm','Torque meter','1time/before working','Machine Check Sheet','Re-setting'],
+    ['','','2','Bolt missing','','No missing bolt','Visual','All','Work Instruction','Re-fasten'],
+    ['50','Packing','1','Packing quantity','','50 EA/Box','Visual','All','Work Instruction','Re-pack'],
+    ['60','Shipping','1','','First-in-first-out','FIFO','Rack','All','ID Tag','Restore'],
+  ],[{r:6,c:7,text:'<E/P>'},{r:11,c:7,text:'<E/P>'}]);
+  const fmea = sheetFromRows('PFMEA',[
+    ['Part Description'],['DEMO TEMP SENSOR'],[],
+    ['Process Step / Function','Requirement','Potential Failure Mode','Severity','Potential Cause','Prevention Control','Detection Control'],
+    ['10 Incoming Inspection','Appearance','Damage not detected','5','Inspector error','Training','Visual inspection'],
+    ['20 Soldering','Tip temperature control','Cold solder','6','Tip temperature out of spec','Temperature control','Start-up check'],
+    ['','Soldering condition','Poor solder joint','6','Insufficient inspection','Limit sample','100% microscope'],
+    ['30 Screw Fastening','Bolt missing','Bolt not fastened','6','Part omitted','Training','100% LVDT error-proofing device'],
+    ['40 Leak Test','Leak rate','Leak not detected','7','Tester drift','Master check','100% leak tester'],
+  ]);
+  const ep = sheetFromRows('EP list',[
+    ['','Error Proof 등록 대장'],[],
+    ['순서','등록NO','고객/차종/품명','설비명','E/P장치명','설치 공정명','검출대상','검출방법'],
+    ['1','EP101','DTS','Auto Soldering M/C','온도 측정지그','Auto Soldering\n(A20)','인두기 Tip 온도','온도 측정 기록'],
+    ['2','EP102','','Screw M/C','LVDT','Screw Fastening\n(A30)','Bolt 미체결','전수 높이 측정'],
+    ['3','EP103','','Leak Tester','Leak Tester','Leak Test\n(A40)','누설 불량','Master Sample'],
+    ['4','EP201','OTHER ITEM','Press','Load cell','Press\n(A10)','압입력','모니터링'],
+  ]);
+  const mk=(type,sh,name)=>{ const L=detectLayout(sh,type); const d={type,fileName:name,sheets:[sh],sheet:sh,layout:L,model:null,error:''}; S.docs[type]=d; };
+  mk('pfd',pfd,'예시_PFD.xlsx'); mk('cp',cp,'예시_Control_Plan.xlsx'); mk('fmea',fmea,'예시_PFMEA.xlsx'); mk('ep',ep,'예시_Error_Proof.xlsx');
+  for(const t of ['pfd','cp','fmea','ep']) buildModel(S.docs[t]);
+  S.demo=true;
+}
+
+initSettingsUI();
+try{ loadDemo(); }catch(e){ console.error(e); }
+renderAll();
+</script>
+
+</body>
+</html>
